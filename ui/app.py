@@ -112,64 +112,134 @@ def clear_cache():
     api_get.clear()
 
 
-def inject_theme():
-    bg_css = ''  # Background image intentionally disabled in dark mode for consistent contrast.
+def _date_input_de(label: str, value, key: str | None = None):
+    try:
+        selected = st.date_input(label, value=value, format='DD.MM.YYYY', key=key)
+    except TypeError:
+        selected = st.date_input(label, value=value, key=key)
+    st.caption(f"Anzeige (DE): {selected.strftime('%d.%m.%Y')}")
+    return selected
 
-    st.markdown(
-        f"""
-        <style>
-          :root {{
+
+def apply_theme(theme: str):
+    is_dark = theme == 'Dark'
+    bg_css = ''
+    if (not is_dark) and ASSET_BG.exists():
+        encoded = base64.b64encode(ASSET_BG.read_bytes()).decode('ascii')
+        bg_css = f'''
+        .stApp::before {{
+          content: "";
+          position: fixed;
+          inset: 0;
+          background-image: linear-gradient(rgba(255,255,255,.74), rgba(255,255,255,.78)), url("data:image/jpeg;base64,{encoded}");
+          background-size: cover;
+          background-position: center;
+          background-attachment: fixed;
+          filter: saturate(0.82) blur(0.5px);
+          z-index: -2;
+        }}
+        '''
+
+    if is_dark:
+        theme_vars = """
+          :root {
             --bg: #0F1115;
-            --card: #171A21;
-            --surface: #11141A;
+            --bg-grad-a: rgba(47,129,247,0.08);
+            --bg-grad-b: rgba(255,255,255,0.03);
+            --card: rgba(255,255,255,0.06);
+            --card-solid: #171A21;
+            --surface: rgba(17,20,26,0.75);
             --surface-2: #141821;
             --text: rgba(255,255,255,0.92);
             --muted: rgba(255,255,255,0.6);
             --label: rgba(255,255,255,0.92);
-            --placeholder: rgba(255,255,255,0.4);
-            --border: rgba(255,255,255,0.06);
-            --border-strong: rgba(255,255,255,0.15);
-            --input-border: rgba(255,255,255,0.15);
-            --input-bg: #11141A;
+            --placeholder: rgba(255,255,255,0.45);
+            --border: rgba(255,255,255,0.10);
+            --border-soft: rgba(255,255,255,0.06);
+            --border-strong: rgba(255,255,255,0.18);
+            --input-border: rgba(255,255,255,0.18);
+            --input-bg: rgba(17,20,26,0.75);
             --accent: #2F81F7;
-            --accent-hover: #2A76E0;
-            --sidebar-bg: #11141A;
-            --sidebar-text: rgba(255,255,255,0.9);
-            --shadow: 0 8px 24px rgba(0,0,0,0.28);
-            --shadow-soft: 0 2px 10px rgba(0,0,0,0.22);
+            --accent-hover: #3b89f7;
+            --sidebar-bg: rgba(17,20,26,0.72);
+            --sidebar-text: rgba(255,255,255,0.92);
+            --shadow: 0 10px 30px rgba(0,0,0,0.35);
+            --shadow-soft: 0 6px 18px rgba(0,0,0,0.22);
+            --alert-bg: rgba(23,26,33,0.84);
+            --success-accent: rgba(47,129,247,0.65);
+            --error-accent: rgba(255,80,80,0.9);
             --radius: 16px;
-          }}
+            --glass-blur: 18px;
+          }
+        """
+    else:
+        theme_vars = """
+          :root {
+            --bg: #F5F5F7;
+            --bg-grad-a: rgba(10,132,255,0.07);
+            --bg-grad-b: rgba(255,255,255,0.72);
+            --card: rgba(255,255,255,0.92);
+            --card-solid: rgba(255,255,255,0.96);
+            --surface: #FFFFFF;
+            --surface-2: #F1F3F7;
+            --text: #111111;
+            --muted: rgba(17,17,17,0.60);
+            --label: #111111;
+            --placeholder: rgba(0,0,0,0.45);
+            --border: rgba(0,0,0,0.08);
+            --border-soft: rgba(0,0,0,0.06);
+            --border-strong: rgba(0,0,0,0.16);
+            --input-border: rgba(0,0,0,0.18);
+            --input-bg: #FFFFFF;
+            --accent: #0A84FF;
+            --accent-hover: #0077ED;
+            --sidebar-bg: rgba(255,255,255,0.78);
+            --sidebar-text: rgba(17,17,17,0.92);
+            --shadow: 0 10px 26px rgba(15,23,42,0.08);
+            --shadow-soft: 0 4px 14px rgba(15,23,42,0.06);
+            --alert-bg: rgba(255,255,255,0.94);
+            --success-accent: rgba(10,132,255,0.55);
+            --error-accent: rgba(255,80,80,0.85);
+            --radius: 16px;
+            --glass-blur: 10px;
+          }
+        """
+
+    table_even = 'var(--surface-2)'
+    table_odd = 'color-mix(in srgb, var(--card-solid) 92%, transparent)'
+
+    st.markdown(
+        f"""
+        <style>
+          {theme_vars}
           html, body, [class*="css"], .stApp {{
             font-family: {FONT_STACK};
             color: var(--text) !important;
             background: var(--bg) !important;
           }}
           .stApp {{
-            background: #0F1115 !important;
-            color: rgba(255,255,255,0.92) !important;
+            background: var(--bg) !important;
+            color: var(--text) !important;
+            background-image: radial-gradient(circle at 8% 10%, var(--bg-grad-a), transparent 42%), radial-gradient(circle at 90% 0%, var(--bg-grad-b), transparent 48%) !important;
           }}
           {bg_css}
           .block-container {{ padding-top: 1.4rem; padding-bottom: 3rem; max-width: 1280px; }}
-          .block-container > div {{
-            background: transparent !important;
-          }}
+          .block-container > div {{ background: transparent !important; }}
           section[data-testid="stSidebar"] {{
-            background: #11141A !important;
-            border-right: 1px solid rgba(255,255,255,0.06) !important;
+            background: var(--sidebar-bg) !important;
+            border-right: 1px solid var(--border-soft) !important;
+            backdrop-filter: blur(18px);
           }}
-          section[data-testid="stSidebar"] * {{
-            color: var(--sidebar-text) !important;
-          }}
+          section[data-testid="stSidebar"] * {{ color: var(--sidebar-text) !important; }}
           section[data-testid="stSidebar"] .stRadio label,
-          section[data-testid="stSidebar"] .stCaption {{
-            opacity: 0.92;
-          }}
+          section[data-testid="stSidebar"] .stCaption {{ opacity: 0.95; }}
           .card {{
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: var(--radius);
             box-shadow: var(--shadow);
             padding: 14px 16px;
+            backdrop-filter: blur(var(--glass-blur));
           }}
           div[data-testid="stForm"] {{
             background: var(--card);
@@ -177,6 +247,7 @@ def inject_theme():
             border-radius: 16px;
             box-shadow: var(--shadow-soft);
             padding: 0.75rem 0.75rem 0.25rem 0.75rem;
+            backdrop-filter: blur(var(--glass-blur));
           }}
           .stTextInput label, .stNumberInput label, .stDateInput label, .stTextArea label, .stSelectbox label {{
             color: var(--label) !important;
@@ -184,16 +255,14 @@ def inject_theme():
             font-weight: 600 !important;
           }}
           .kpi-grid {{ display:grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap:12px; margin: 8px 0 14px; }}
-          .kpi-item {{ background: var(--card); border:1px solid var(--border); border-radius:16px; box-shadow: var(--shadow-soft); padding: 14px; }}
+          .kpi-item {{ background: var(--card); border:1px solid var(--border); border-radius:16px; box-shadow: var(--shadow-soft); padding: 14px; backdrop-filter: blur(var(--glass-blur)); }}
           .kpi-label {{ color: var(--muted); font-size: 0.82rem; }}
           .kpi-value {{ font-weight: 650; font-size: 1.4rem; letter-spacing: -0.02em; }}
           .muted {{ color: var(--muted); }}
-          div[data-testid="stMetric"] {{ background: var(--card); border:1px solid var(--border); border-radius:16px; padding:8px 10px; box-shadow: var(--shadow-soft); }}
+          div[data-testid="stMetric"] {{ background: var(--card); border:1px solid var(--border); border-radius:16px; padding:8px 10px; box-shadow: var(--shadow-soft); backdrop-filter: blur(var(--glass-blur)); }}
           div[data-testid="stDataFrame"] {{ border-radius: 16px; overflow: hidden; border: 1px solid var(--border); background: var(--card) !important; }}
-          [data-testid="stTable"], [data-testid="stDataFrameResizable"] {{
-            background: var(--card) !important;
-          }}
-          h1, h2, h3 {{ color: rgba(255,255,255,0.95) !important; }}
+          [data-testid="stTable"], [data-testid="stDataFrameResizable"] {{ background: var(--card) !important; }}
+          h1, h2, h3 {{ color: var(--text) !important; }}
           p, li, span, label, div {{ color: inherit; }}
           .stTextInput > div > div, .stTextArea textarea, .stDateInput > div > div, .stNumberInput > div > div, .stSelectbox > div > div {{
             border-radius: 12px !important;
@@ -213,7 +282,7 @@ def inject_theme():
           .stTextInput input:focus, .stTextArea textarea:focus, .stNumberInput input:focus, .stDateInput input:focus {{
             outline: none !important;
             box-shadow: 0 0 0 2px rgba(47,129,247,0.25) !important;
-            border-color: #2F81F7 !important;
+            border-color: var(--accent) !important;
           }}
           .stNumberInput [data-baseweb="input"], .stDateInput [data-baseweb="input"] {{
             border-radius: 12px !important;
@@ -222,61 +291,46 @@ def inject_theme():
           }}
           .stNumberInput [data-baseweb="input"]:focus-within, .stDateInput [data-baseweb="input"]:focus-within {{
             box-shadow: 0 0 0 2px rgba(47,129,247,0.25) !important;
-            border-color: #2F81F7 !important;
+            border-color: var(--accent) !important;
           }}
           .stSelectbox [data-baseweb="select"] {{
             background: var(--input-bg) !important;
             border: 1px solid var(--input-border) !important;
             border-radius: 12px !important;
           }}
-          .stSelectbox [data-baseweb="select"] * {{
-            color: rgba(255,255,255,0.9) !important;
-          }}
+          .stSelectbox [data-baseweb="select"] * {{ color: var(--text) !important; }}
           .stButton button, .stDownloadButton button {{
             border-radius: 12px;
             border: none !important;
             box-shadow: var(--shadow-soft);
-            background: #2F81F7 !important;
+            background: var(--accent) !important;
             color: white !important;
             transition: all .14s ease;
           }}
-          .stButton button:hover, .stDownloadButton button:hover {{
-            opacity: 0.9;
-            box-shadow: 0 8px 22px rgba(47,129,247,.18);
-          }}
+          .stButton button:hover, .stDownloadButton button:hover {{ opacity: 0.92; }}
           div[data-testid="stAlert"] {{
             border-radius: 12px;
             border: 1px solid var(--border);
             box-shadow: var(--shadow-soft);
-            background: rgba(23,26,33,0.95);
+            background: var(--alert-bg);
+            backdrop-filter: blur(calc(var(--glass-blur) - 4px));
           }}
-          div[data-testid="stAlert"] > div {{
-            background: transparent !important;
-          }}
-          div[data-testid="stAlert"][kind="error"] {{
-            border-left: 4px solid rgba(255,80,80,0.9);
-            border-color: rgba(255,80,80,0.18);
-          }}
-          div[data-testid="stAlert"][kind="success"] {{
-            border-left: 4px solid rgba(47,129,247,0.65);
-            border-color: rgba(47,129,247,0.16);
-          }}
-          div[data-testid="stAlert"][kind="info"] {{
-            border-left: 4px solid rgba(47,129,247,0.55);
-            border-color: rgba(47,129,247,0.14);
-          }}
-          div[data-testid="stAlert"] * {{ color: rgba(255,255,255,0.92) !important; }}
-          a {{ color: #2F81F7; }}
-          thead tr {{ background: #11141A !important; }}
-          tbody tr {{ background: #171A21 !important; }}
-          tbody tr:nth-child(even) {{ background: #141821 !important; }}
-          [data-testid="stDataFrame"] table, [data-testid="stDataFrame"] th, [data-testid="stDataFrame"] td {{
-            color: rgba(255,255,255,0.9) !important;
-          }}
+          div[data-testid="stAlert"] > div {{ background: transparent !important; }}
+          div[data-testid="stAlert"][kind="error"] {{ border-left: 4px solid var(--error-accent); border-color: rgba(255,80,80,0.18); }}
+          div[data-testid="stAlert"][kind="success"] {{ border-left: 4px solid var(--success-accent); border-color: rgba(47,129,247,0.16); }}
+          div[data-testid="stAlert"][kind="info"] {{ border-left: 4px solid rgba(47,129,247,0.55); border-color: rgba(47,129,247,0.14); }}
+          div[data-testid="stAlert"] * {{ color: var(--text) !important; }}
+          a {{ color: var(--accent); }}
+          thead tr {{ background: var(--surface) !important; }}
+          tbody tr {{ background: {table_odd} !important; }}
+          tbody tr:nth-child(even) {{ background: {table_even} !important; }}
+          [data-testid="stDataFrame"] table, [data-testid="stDataFrame"] th, [data-testid="stDataFrame"] td {{ color: var(--text) !important; }}
           [data-testid="stToolbar"] {{ background: transparent !important; }}
           [data-testid="stChart"] > div, .vega-embed, .vega-embed > details {{
             background: var(--card) !important;
             border-radius: 14px;
+            backdrop-filter: blur(var(--glass-blur));
+            color: var(--text) !important;
           }}
           @media (max-width: 900px) {{ .kpi-grid {{ grid-template-columns: 1fr 1fr; }} }}
           @media (max-width: 560px) {{ .kpi-grid {{ grid-template-columns: 1fr; }} }}
@@ -414,7 +468,7 @@ def manual_costs_page():
     with st.form('manual_create'):
         c1, c2 = st.columns(2)
         with c1:
-            m_date = st.date_input('Datum')
+            m_date = _date_input_de('Datum', value=pd.Timestamp.today().date(), key='manual_create_date')
             vendor = st.text_input('Unternehmen *', placeholder='z. B. Poolbau Müller GmbH')
             amount = st.number_input('Betrag (EUR) *', min_value=0.0, step=0.01, help='z. B. 1299,00')
         with c2:
@@ -454,7 +508,7 @@ def manual_costs_page():
     selected_label = st.selectbox('Eintrag', list(options.keys()))
     selected = options[selected_label]
     with st.form('manual_edit'):
-        e_date = st.date_input('Datum', value=pd.to_datetime(selected['date']).date())
+        e_date = _date_input_de('Datum', value=pd.to_datetime(selected['date']).date(), key='manual_edit_date')
         e_vendor = st.text_input('Unternehmen', value=selected['vendor'])
         e_amount = st.number_input('Betrag (EUR)', min_value=0.01, step=0.01, value=float(selected['amount']))
         e_category = st.text_input('Kategorie', value=selected.get('category') or '')
@@ -501,8 +555,19 @@ def export_page():
 
 def main():
     st.set_page_config(page_title='pool-cost-tracker', layout='wide')
-    inject_theme()
-    st.sidebar.markdown('## pool-cost-tracker')
+    if 'theme' not in st.session_state:
+        st.session_state['theme'] = 'Dark'
+
+    st.sidebar.markdown('## Poolkosten')
+    st.sidebar.caption('Kostenübersicht')
+    selected_theme = st.sidebar.radio(
+        'Design',
+        ['Dark', 'Light'],
+        index=0 if st.session_state['theme'] == 'Dark' else 1,
+        key='theme_selector',
+    )
+    st.session_state['theme'] = selected_theme
+    apply_theme(st.session_state['theme'])
     st.sidebar.caption(f'API: {API_BASE_URL}')
     page = st.sidebar.radio('Seiten', ['Dashboard', 'Paperless-Rechnungen', 'Manuelle Kosten', 'Export'])
 
