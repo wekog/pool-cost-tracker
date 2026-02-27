@@ -114,9 +114,9 @@ def get_config():
 async def run_sync(db: Session = Depends(get_db)):
     settings = get_settings()
     if not (settings.PAPERLESS_BASE_URL or '').strip():
-        raise HTTPException(status_code=422, detail='PAPERLESS_BASE_URL fehlt. Bitte in .env setzen.')
+        raise HTTPException(status_code=422, detail='PAPERLESS_BASE_URL fehlt. Bitte im Portainer Stack unter Environment setzen.')
     if not (settings.PAPERLESS_TOKEN or '').strip():
-        raise HTTPException(status_code=422, detail='PAPERLESS_TOKEN fehlt. Bitte in .env setzen.')
+        raise HTTPException(status_code=422, detail='PAPERLESS_TOKEN fehlt. Bitte im Portainer Stack unter Environment setzen.')
 
     try:
         return await sync_invoices(db, settings)

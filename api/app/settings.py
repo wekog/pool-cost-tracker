@@ -1,7 +1,7 @@
 from functools import lru_cache
 import os
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 try:
     from pydantic_settings import BaseSettings, SettingsConfigDict
 except ModuleNotFoundError:  # pragma: no cover - local test fallback
@@ -19,9 +19,9 @@ except ModuleNotFoundError:  # pragma: no cover - local test fallback
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
+    model_config = SettingsConfigDict(extra='ignore')
 
-    PAPERLESS_BASE_URL: str = Field(default='http://172.16.10.10:8000')
+    PAPERLESS_BASE_URL: str
     PAPERLESS_TOKEN: str
     POOL_TAG_NAME: str = Field(default='Pool')
     SYNC_PAGE_SIZE: int = Field(default=100)
@@ -35,4 +35,31 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    try:
+        settings = Settings()
+    except ValidationError as exc:
+        required = []
+        for err in exc.errors():
+            if err.get('type') == 'missing' and err.get('loc'):
+                required.append(str(err['loc'][0]))
+        missing = sorted(set(required))
+        if missing:
+            raise RuntimeError(
+                'Fehlende Pflicht-ENV für API-Start: '
+                + ', '.join(missing)
+                + '. Bitte im Portainer Stack unter Environment setzen.'
+            ) from exc
+        raise RuntimeError(f'Ungültige API-Umgebungsvariablen: {exc}') from exc
+
+    missing_empty = [
+        key
+        for key in ('PAPERLESS_BASE_URL', 'PAPERLESS_TOKEN')
+        if not getattr(settings, key, '').strip()
+    ]
+    if missing_empty:
+        raise RuntimeError(
+            'Leere Pflicht-ENV für API-Start: '
+            + ', '.join(missing_empty)
+            + '. Bitte im Portainer Stack unter Environment setzen.'
+        )
+    return settings

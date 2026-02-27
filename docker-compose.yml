@@ -3,18 +3,16 @@ services:
     build:
       context: .
       dockerfile: api/Dockerfile
-    env_file:
-      - .env
     environment:
-      PAPERLESS_BASE_URL: ${PAPERLESS_BASE_URL:-http://172.16.10.10:8000}
-      PAPERLESS_TOKEN: ${PAPERLESS_TOKEN}
-      POOL_TAG_NAME: ${POOL_TAG_NAME:-Pool}
-      SYNC_PAGE_SIZE: ${SYNC_PAGE_SIZE:-100}
-      SYNC_LOOKBACK_DAYS: ${SYNC_LOOKBACK_DAYS:-365}
-      DATABASE_URL: ${DATABASE_URL:-sqlite:////data/app.db}
-      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-false}
-      SCHEDULER_INTERVAL_MINUTES: ${SCHEDULER_INTERVAL_MINUTES:-360}
-      SCHEDULER_RUN_ON_STARTUP: ${SCHEDULER_RUN_ON_STARTUP:-true}
+      - PAPERLESS_BASE_URL
+      - PAPERLESS_TOKEN
+      - POOL_TAG_NAME
+      - SYNC_PAGE_SIZE
+      - SYNC_LOOKBACK_DAYS
+      - DATABASE_URL
+      - SCHEDULER_ENABLED
+      - SCHEDULER_INTERVAL_MINUTES
+      - SCHEDULER_RUN_ON_STARTUP
     volumes:
       - ./data:/data
     ports:
@@ -27,6 +25,6 @@ services:
     depends_on:
       - api
     environment:
-      API_BASE_URL: http://api:8000
+      - API_BASE_URL=http://api:8000
     ports:
       - "8501:8501"
