@@ -4,11 +4,7 @@ port = 8501
 headless = true
 enableCORS = false
 enableXsrfProtection = false
-maxUploadSize = 25
+enableWebsocketCompression = false
 
 [browser]
 gatherUsageStats = false
-
-[client]
-toolbarMode = "minimal"
-showErrorDetails = true
