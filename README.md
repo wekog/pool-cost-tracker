@@ -44,6 +44,7 @@ Optionale Variablen (mit App-Defaults):
 UI:
 
 - `API_BASE_URL` (intern empfohlen: `http://api:8000`)
+- `STREAMLIT_BROWSER_GATHER_USAGE_STATS` (empfohlen: `false`, verhindert unnötige Telemetrie/DNS-Overhead)
 
 Details: `/Users/weko/Documents/Codex/Pool_Kosten/docs/portainer-env.md`
 

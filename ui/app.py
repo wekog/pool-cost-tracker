@@ -3,56 +3,40 @@ from __future__ import annotations
 import json
 import os
 from io import StringIO
+from time import perf_counter
 
 import pandas as pd
 import requests
 import streamlit as st
 
+os.environ.setdefault('STREAMLIT_BROWSER_GATHER_USAGE_STATS', 'false')
+
 API_BASE_URL = os.getenv('API_BASE_URL', 'http://api:8000').rstrip('/')
 FONT_STACK = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+CONNECT_TIMEOUT = 1.5
+READ_TIMEOUT = 4.0
 
 
-@st.cache_data(ttl=5)
-def api_get(path: str, params: dict | None = None):
-    resp = requests.get(f'{API_BASE_URL}{path}', params=params, timeout=30)
-    resp.raise_for_status()
-    if path.endswith('.csv'):
-        return resp.text
-    return resp.json()
+def _perf_enabled() -> bool:
+    return bool(st.session_state.get('perf_debug', False))
 
 
-def api_post(path: str, payload=None):
-    resp = requests.post(f'{API_BASE_URL}{path}', json=payload, timeout=120)
-    _raise_with_detail(resp)
-    return resp.json() if resp.content else None
+def _perf_reset() -> None:
+    st.session_state['perf_lines'] = []
 
 
-def api_put(path: str, payload: dict):
-    resp = requests.put(f'{API_BASE_URL}{path}', json=payload, timeout=30)
-    _raise_with_detail(resp)
-    return resp.json()
+def _perf_add(label: str, ms: float, hint: str = '') -> None:
+    if not _perf_enabled():
+        return
+    suffix = f' ({hint})' if hint else ''
+    st.session_state.setdefault('perf_lines', []).append(f'{label}: {ms:.1f}ms{suffix}')
 
 
-def api_delete(path: str):
-    resp = requests.delete(f'{API_BASE_URL}{path}', timeout=30)
-    _raise_with_detail(resp)
-    return resp.json()
-
-
-def _raise_with_detail(resp: requests.Response) -> None:
-    try:
-        resp.raise_for_status()
-    except requests.HTTPError as exc:
-        detail = None
-        try:
-            payload = resp.json()
-            if isinstance(payload, dict):
-                detail = format_api_error(payload)
-        except Exception:
-            detail = None
-        if detail:
-            raise requests.HTTPError(str(detail), response=resp, request=resp.request) from exc
-        raise
+@st.cache_resource
+def get_http_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({'Accept': 'application/json'})
+    return session
 
 
 def format_api_error(resp_json) -> str:
@@ -105,8 +89,91 @@ def format_api_error(resp_json) -> str:
     return str(detail)
 
 
-def clear_cache():
-    api_get.clear()
+def _raise_with_detail(resp: requests.Response) -> None:
+    try:
+        resp.raise_for_status()
+    except requests.HTTPError as exc:
+        detail = None
+        try:
+            payload = resp.json()
+            if isinstance(payload, dict):
+                detail = format_api_error(payload)
+        except Exception:
+            detail = None
+        if detail:
+            raise requests.HTTPError(str(detail), response=resp, request=resp.request) from exc
+        raise
+
+
+def _request(method: str, path: str, *, params: dict | None = None, payload: dict | None = None):
+    session = get_http_session()
+    start = perf_counter()
+    resp = session.request(
+        method=method,
+        url=f'{API_BASE_URL}{path}',
+        params=params,
+        json=payload,
+        timeout=(CONNECT_TIMEOUT, READ_TIMEOUT),
+    )
+    _raise_with_detail(resp)
+    elapsed = (perf_counter() - start) * 1000
+    _perf_add(f'{method} {path}', elapsed, 'network')
+    return resp
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_config_cached():
+    return _request('GET', '/config').json()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_summary_cached():
+    return _request('GET', '/summary').json()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_invoices_cached(needs_review: str, search: str, sort: str):
+    params = {'sort': sort}
+    if needs_review == 'Ja':
+        params['needs_review'] = 'true'
+    elif needs_review == 'Nein':
+        params['needs_review'] = 'false'
+    if search.strip():
+        params['search'] = search.strip()
+    return _request('GET', '/invoices', params=params).json()
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def get_manual_costs_cached():
+    return _request('GET', '/manual-costs').json()
+
+
+def get_export_csv():
+    start = perf_counter()
+    resp = _request('GET', '/export.csv')
+    text = resp.text
+    _perf_add('render/export payload', (perf_counter() - start) * 1000, 'text')
+    return text
+
+
+def api_post(path: str, payload=None):
+    resp = _request('POST', path, payload=payload)
+    return resp.json() if resp.content else None
+
+
+def api_put(path: str, payload: dict):
+    return _request('PUT', path, payload=payload).json()
+
+
+def api_delete(path: str):
+    return _request('DELETE', path).json()
+
+
+def clear_read_caches():
+    get_config_cached.clear()
+    get_summary_cached.clear()
+    get_invoices_cached.clear()
+    get_manual_costs_cached.clear()
 
 
 def _date_input_de(label: str, value, key: str | None = None):
@@ -300,8 +367,6 @@ def section_card(title: str, subtitle: str | None = None):
 
 def dashboard_page():
     st.title('Dashboard')
-    cfg = api_get('/config')
-    summary = api_get('/summary')
 
     col_sync, col_info = st.columns([1, 2])
     with col_sync:
@@ -309,13 +374,15 @@ def dashboard_page():
             try:
                 with st.spinner('Synchronisierung läuft...'):
                     result = api_post('/sync')
-                clear_cache()
+                clear_read_caches()
                 st.success(f"{result['synced']} Dokumente synchronisiert ({result['inserted']} neu, {result['updated']} aktualisiert)")
-                summary = api_get('/summary')
-                cfg = api_get('/config')
             except requests.HTTPError as exc:
                 st.error(f'Sync fehlgeschlagen: {exc}')
+
     with col_info:
+        cfg_start = perf_counter()
+        cfg = get_config_cached()
+        _perf_add('load config', (perf_counter() - cfg_start) * 1000, 'cache ttl 30s')
         st.markdown(
             f"<div class='card'><div><b>Scheduler</b>: {'aktiv' if cfg['scheduler_enabled'] else 'inaktiv'}</div>"
             f"<div class='muted'>Intervall: {cfg['scheduler_interval_minutes']} min | Run on startup: {cfg['scheduler_run_on_startup']}</div>"
@@ -323,65 +390,97 @@ def dashboard_page():
             unsafe_allow_html=True,
         )
 
-    st.markdown(
-        f"""
-        <div class="kpi-grid">
-          <div class="kpi-item"><div class="kpi-label">Gesamtsumme</div><div class="kpi-value">{fmt_eur(summary['total_amount'])}</div></div>
-          <div class="kpi-item"><div class="kpi-label">Paperless</div><div class="kpi-value">{fmt_eur(summary['paperless_total'])}</div></div>
-          <div class="kpi-item"><div class="kpi-label">Manuell</div><div class="kpi-value">{fmt_eur(summary['manual_total'])}</div></div>
-          <div class="kpi-item"><div class="kpi-label">Needs Review</div><div class="kpi-value">{summary['needs_review_count']}</div></div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    summary_placeholder = st.container()
+    charts_placeholder = st.container()
 
-    left, right = st.columns(2)
-    with left:
-        section_card('Top 10 Unternehmen', 'Summierte Paperless-Kosten nach Unternehmen')
-        top_df = pd.DataFrame(summary.get('top_vendors', []))
-        if top_df.empty:
-            st.info('Noch keine Rechnungen vorhanden.')
-        else:
-            top_df = top_df.rename(columns={'name': 'Unternehmen', 'amount': 'Betrag'})
-            st.dataframe(top_df, use_container_width=True, hide_index=True)
-            st.bar_chart(top_df.set_index('Unternehmen')['Betrag'])
-    with right:
-        section_card('Kosten nach Kategorie', 'Nur manuelle Kostenpositionen')
-        cat_df = pd.DataFrame(summary.get('costs_by_category', []))
-        if cat_df.empty:
-            st.info('Noch keine manuellen Kategorien vorhanden.')
-        else:
-            cat_df = cat_df.rename(columns={'category': 'Kategorie', 'amount': 'Betrag'})
-            st.dataframe(cat_df, use_container_width=True, hide_index=True)
-            st.bar_chart(cat_df.set_index('Kategorie')['Betrag'])
+    summary_start = perf_counter()
+    summary = get_summary_cached()
+    _perf_add('load summary', (perf_counter() - summary_start) * 1000, 'cache ttl 30s')
+
+    with summary_placeholder:
+        st.markdown(
+            f"""
+            <div class="kpi-grid">
+              <div class="kpi-item"><div class="kpi-label">Gesamtsumme</div><div class="kpi-value">{fmt_eur(summary['total_amount'])}</div></div>
+              <div class="kpi-item"><div class="kpi-label">Paperless</div><div class="kpi-value">{fmt_eur(summary['paperless_total'])}</div></div>
+              <div class="kpi-item"><div class="kpi-label">Manuell</div><div class="kpi-value">{fmt_eur(summary['manual_total'])}</div></div>
+              <div class="kpi-item"><div class="kpi-label">Needs Review</div><div class="kpi-value">{summary['needs_review_count']}</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    render_start = perf_counter()
+    with charts_placeholder:
+        left, right = st.columns(2)
+        with left:
+            section_card('Top 10 Unternehmen', 'Summierte Paperless-Kosten nach Unternehmen')
+            top_df = pd.DataFrame(summary.get('top_vendors', []))
+            if top_df.empty:
+                st.info('Noch keine Rechnungen vorhanden.')
+            else:
+                top_df = top_df.rename(columns={'name': 'Unternehmen', 'amount': 'Betrag'})
+                st.dataframe(top_df, use_container_width=True, hide_index=True)
+                st.bar_chart(top_df.set_index('Unternehmen')['Betrag'])
+        with right:
+            section_card('Kosten nach Kategorie', 'Nur manuelle Kostenpositionen')
+            cat_df = pd.DataFrame(summary.get('costs_by_category', []))
+            if cat_df.empty:
+                st.info('Noch keine manuellen Kategorien vorhanden.')
+            else:
+                cat_df = cat_df.rename(columns={'category': 'Kategorie', 'amount': 'Betrag'})
+                st.dataframe(cat_df, use_container_width=True, hide_index=True)
+                st.bar_chart(cat_df.set_index('Kategorie')['Betrag'])
+    _perf_add('render dashboard', (perf_counter() - render_start) * 1000)
 
 
 def invoices_page():
     st.title('Paperless-Rechnungen')
-    f1, f2, f3 = st.columns([1, 2, 1])
-    with f1:
-        needs_review_filter = st.selectbox('Needs Review', ['Alle', 'Ja', 'Nein'])
-    with f2:
-        search = st.text_input('Unternehmen/Titel suchen', placeholder='z. B. Poolbau')
-    with f3:
-        sort = st.selectbox('Sortierung', ['date_desc', 'amount_desc', 'vendor_asc'])
 
-    params = {'sort': sort}
-    if needs_review_filter == 'Ja':
-        params['needs_review'] = 'true'
-    elif needs_review_filter == 'Nein':
-        params['needs_review'] = 'false'
-    if search.strip():
-        params['search'] = search.strip()
+    if 'invoices_filters' not in st.session_state:
+        st.session_state['invoices_filters'] = {
+            'needs_review': 'Alle',
+            'search': '',
+            'sort': 'date_desc',
+            'limit': 200,
+        }
 
-    invoices = api_get('/invoices', params=params)
+    with st.form('invoice_filter_form'):
+        f1, f2, f3, f4 = st.columns([1, 2, 1, 1])
+        with f1:
+            needs_review_filter = st.selectbox('Needs Review', ['Alle', 'Ja', 'Nein'], index=['Alle', 'Ja', 'Nein'].index(st.session_state['invoices_filters']['needs_review']))
+        with f2:
+            search = st.text_input('Unternehmen/Titel suchen', value=st.session_state['invoices_filters']['search'], placeholder='z. B. Poolbau')
+        with f3:
+            sort = st.selectbox('Sortierung', ['date_desc', 'amount_desc', 'vendor_asc'], index=['date_desc', 'amount_desc', 'vendor_asc'].index(st.session_state['invoices_filters']['sort']))
+        with f4:
+            limit = st.selectbox('Max Zeilen', [50, 100, 200, 500], index=[50, 100, 200, 500].index(st.session_state['invoices_filters']['limit']))
+        apply_filters = st.form_submit_button('Anwenden')
+
+    if apply_filters:
+        st.session_state['invoices_filters'] = {
+            'needs_review': needs_review_filter,
+            'search': search,
+            'sort': sort,
+            'limit': limit,
+        }
+
+    filters = st.session_state['invoices_filters']
+    data_start = perf_counter()
+    invoices = get_invoices_cached(filters['needs_review'], filters['search'], filters['sort'])
+    _perf_add('load invoices', (perf_counter() - data_start) * 1000, 'cache ttl 30s')
+
     if not invoices:
         st.info('Keine Rechnungen gefunden.')
         return
 
-    df = pd.DataFrame(invoices)
+    shown = invoices[: filters['limit']]
+    df = pd.DataFrame(shown)
     display_cols = [c for c in ['id', 'paperless_doc_id', 'paperless_created', 'vendor', 'amount', 'currency', 'confidence', 'needs_review', 'title'] if c in df.columns]
+
+    render_start = perf_counter()
     st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+    _perf_add('render invoices table', (perf_counter() - render_start) * 1000)
 
     st.subheader('Rechnung prüfen / korrigieren')
     options = {f"#{row['id']} | {row.get('vendor') or '-'} | {row.get('title') or '-'}": row for row in invoices}
@@ -405,7 +504,7 @@ def invoices_page():
         save = st.form_submit_button('Speichern')
     if save:
         api_put(f"/invoices/{selected['id']}", {'vendor': vendor or None, 'amount': float(amount), 'needs_review': needs_review})
-        clear_cache()
+        clear_read_caches()
         st.success('Rechnung aktualisiert.')
 
 
@@ -437,17 +536,23 @@ def manual_costs_page():
                     'note': note or None,
                     'currency': 'EUR',
                 })
-                clear_cache()
+                clear_read_caches()
                 st.success('Manuelle Kostenposition angelegt.')
             except requests.HTTPError as exc:
                 st.error(f'Bitte prüfen: {exc}')
 
-    rows = api_get('/manual-costs')
+    data_start = perf_counter()
+    rows = get_manual_costs_cached()
+    _perf_add('load manual_costs', (perf_counter() - data_start) * 1000, 'cache ttl 30s')
+
     if not rows:
         st.info('Noch keine manuellen Kosten vorhanden.')
         return
 
-    df = pd.DataFrame(rows)
+    display_limit = st.selectbox('Max Zeilen', [50, 100, 200, 500], index=2, key='manual_limit')
+    shown = rows[:display_limit]
+
+    df = pd.DataFrame(shown)
     st.dataframe(df[['id', 'date', 'vendor', 'amount', 'currency', 'category', 'note']], use_container_width=True, hide_index=True)
 
     st.subheader('Bearbeiten / Löschen')
@@ -478,14 +583,14 @@ def manual_costs_page():
                     'note': e_note or None,
                     'currency': selected.get('currency', 'EUR'),
                 })
-                clear_cache()
+                clear_read_caches()
                 st.success('Eintrag aktualisiert.')
             except requests.HTTPError as exc:
                 st.error(f'Bitte prüfen: {exc}')
     if delete:
         try:
             api_delete(f"/manual-costs/{selected['id']}")
-            clear_cache()
+            clear_read_caches()
             st.success('Eintrag gelöscht.')
         except requests.HTTPError as exc:
             st.error(f'Aktion fehlgeschlagen: {exc}')
@@ -493,22 +598,39 @@ def manual_costs_page():
 
 def export_page():
     st.title('Export')
-    csv_text = api_get('/export.csv')
+    csv_text = get_export_csv()
     st.download_button('CSV herunterladen', data=csv_text.encode('utf-8'), file_name='pool_costs_export.csv', mime='text/csv', use_container_width=True)
     if csv_text.strip():
         df = pd.read_csv(StringIO(csv_text))
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df.head(200), use_container_width=True, hide_index=True)
+
+
+def _render_perf_debug():
+    if not _perf_enabled():
+        return
+    lines = st.session_state.get('perf_lines', [])
+    with st.sidebar.expander('Performance Debug', expanded=True):
+        if not lines:
+            st.caption('Keine Messwerte in diesem Run.')
+        else:
+            st.code('\n'.join(lines), language='text')
 
 
 def main():
     st.set_page_config(page_title='pool-cost-tracker', layout='wide')
+    _perf_reset()
+
     st.sidebar.markdown('## Poolkosten')
     st.sidebar.caption('Kostenübersicht')
-    apply_theme()
+    st.session_state['perf_debug'] = st.sidebar.checkbox('Debug Performance', value=st.session_state.get('perf_debug', False))
     st.sidebar.caption(f'API: {API_BASE_URL}')
+
+    apply_theme()
+
     page = st.sidebar.radio('Seiten', ['Dashboard', 'Paperless-Rechnungen', 'Manuelle Kosten', 'Export'])
 
     try:
+        render_start = perf_counter()
         if page == 'Dashboard':
             dashboard_page()
         elif page == 'Paperless-Rechnungen':
@@ -517,8 +639,11 @@ def main():
             manual_costs_page()
         else:
             export_page()
+        _perf_add(f'render page {page}', (perf_counter() - render_start) * 1000)
     except requests.RequestException as exc:
         st.error(f'API-Fehler: {exc}')
+
+    _render_perf_debug()
 
 
 if __name__ == '__main__':
