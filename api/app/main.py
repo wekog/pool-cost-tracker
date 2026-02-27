@@ -157,6 +157,10 @@ def get_invoices(
 
     if sort == 'amount_desc':
         stmt = stmt.order_by(Invoice.amount.desc().nullslast(), Invoice.id.desc())
+    elif sort == 'amount_asc':
+        stmt = stmt.order_by(Invoice.amount.asc().nullsfirst(), Invoice.id.desc())
+    elif sort == 'date_asc':
+        stmt = stmt.order_by(Invoice.paperless_created.asc().nullsfirst(), Invoice.id.desc())
     elif sort == 'vendor_asc':
         stmt = stmt.order_by(Invoice.vendor.asc().nullslast(), Invoice.id.desc())
     else:

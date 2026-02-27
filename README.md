@@ -1,6 +1,6 @@
 # pool-cost-tracker
 
-Lokale WebApp (FastAPI + Streamlit) zur Auswertung von Pool-Kosten aus Paperless-ngx (Tag-Filter `Pool`) plus manuellen Kostenpositionen.
+Lokale WebApp (FastAPI + React/Vite) zur Auswertung von Pool-Kosten aus Paperless-ngx (Tag-Filter `Pool`) plus manuellen Kostenpositionen.
 
 ## Features
 
@@ -17,7 +17,7 @@ Lokale WebApp (FastAPI + Streamlit) zur Auswertung von Pool-Kosten aus Paperless
 ## Tech-Stack
 
 - Backend: Python 3.12, FastAPI, httpx, SQLAlchemy, Alembic
-- UI: Streamlit
+- UI: React 18, Vite, TypeScript, Nginx (`/api` Reverse Proxy auf FastAPI)
 - DB: SQLite (`/data`)
 - Tests: pytest
 
@@ -43,8 +43,7 @@ Optionale Variablen (mit App-Defaults):
 
 UI:
 
-- `API_BASE_URL` (intern empfohlen: `http://api:8000`)
-- `STREAMLIT_BROWSER_GATHER_USAGE_STATS` (empfohlen: `false`, verhindert unnötige Telemetrie/DNS-Overhead)
+- Keine zusätzlichen UI-ENV nötig. Die React-App spricht relativ über `/api` und wird im gleichen Container-Proxy auf `http://api:8000` weitergeleitet.
 
 Details: `/Users/weko/Documents/Codex/Pool_Kosten/docs/portainer-env.md`
 
@@ -57,7 +56,7 @@ docker compose up --build
 ## Aufruf
 
 - UI: `http://<host>:8501`
-- API (externes Mapping): `http://<host>:18000`
+- API (externes Mapping): `http://<host>:18000/docs`
 
 ## Scheduler
 
@@ -82,6 +81,12 @@ docker compose exec api alembic upgrade head
 - `GET /summary`
 - `GET /export.csv`
 - `GET /config`
+
+## Frontend
+
+- Die produktive UI liegt unter `/Users/weko/Documents/Codex/Pool_Kosten/web`
+- `web/nginx/default.conf` servt die SPA und proxyt `/api/*` intern auf `api:8000`
+- Der alte Streamlit-Ordner `/Users/weko/Documents/Codex/Pool_Kosten/ui` bleibt nur als Legacy-Referenz erhalten und wird von Docker Compose nicht mehr verwendet
 
 ## Tests
 

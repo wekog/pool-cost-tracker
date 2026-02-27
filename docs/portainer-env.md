@@ -19,4 +19,4 @@ Dieses Projekt verwendet keine `.env` Datei mehr. Alle Variablen werden im Porta
 
 ## UI
 
-- `API_BASE_URL` (empfohlen intern: `http://api:8000`)
+Die React-UI benötigt keine eigenen Environment-Variablen. Sie läuft unter Port 8501 und nutzt intern den Nginx-Proxy auf `/api`, der Requests an `http://api:8000` weiterleitet.
