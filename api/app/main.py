@@ -15,7 +15,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .date_ranges import apply_date_filter_to_date, apply_date_filter_to_datetime, resolve_date_range
-from .database import Base, SessionLocal, engine, get_db
+from .database import Base, SessionLocal, engine, ensure_schema_compatibility, get_db
 from .models import Invoice, ManualCost, SyncRun
 from .paperless import PaperlessClient
 from .queries import all_costs_union_query
@@ -85,6 +85,7 @@ async def _run_sync_job() -> None:
 async def lifespan(app: FastAPI):
     global scheduler
     Base.metadata.create_all(bind=engine)
+    ensure_schema_compatibility(engine)
     settings = get_settings()
     scheduler = SyncScheduler(settings, _run_sync_job)
     await scheduler.start()
