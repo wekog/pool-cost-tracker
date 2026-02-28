@@ -36,6 +36,19 @@ class PaperlessClient:
             raise PaperlessError('Unerwartetes API-Format von Paperless')
         return payload
 
+    async def probe(self) -> int:
+        start = datetime.now(timezone.utc)
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                self._url('/api/tags/'),
+                headers=self._headers(),
+                params={'page_size': 1},
+                timeout=5.0,
+            )
+            response.raise_for_status()
+        elapsed = datetime.now(timezone.utc) - start
+        return int(elapsed.total_seconds() * 1000)
+
     async def get_tag_id_by_name(self) -> int:
         async with httpx.AsyncClient() as client:
             next_path = '/api/tags/'

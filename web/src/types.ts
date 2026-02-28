@@ -1,7 +1,10 @@
 export type PageKey = 'dashboard' | 'invoices' | 'manual' | 'export'
+export type RangeKey = 'month' | 'last_month' | 'year' | 'all' | 'custom'
 
 export interface HealthResponse {
   status: string
+  paperless_ok: boolean
+  paperless_latency_ms: number | null
 }
 
 export interface ConfigResponse {
@@ -38,7 +41,9 @@ export interface Invoice {
   paperless_created: string | null
   title: string | null
   vendor: string | null
+  vendor_source: 'auto' | 'manual'
   amount: number | null
+  amount_source: 'auto' | 'manual'
   currency: string
   confidence: number
   needs_review: boolean
@@ -55,6 +60,8 @@ export interface InvoiceUpdatePayload {
   vendor?: string | null
   amount?: number | null
   needs_review?: boolean
+  reset_vendor?: boolean
+  reset_amount?: boolean
 }
 
 export interface ManualCost {
@@ -79,10 +86,20 @@ export interface ManualCostPayload {
   note?: string | null
 }
 
-export interface SyncResponse {
-  synced: number
-  inserted: number
-  updated: number
-  skipped: number
-  pool_tag_id: number
+export interface SyncError {
+  count: number
+  first_error: string | null
 }
+
+export interface SyncResponse {
+  started_at: string
+  finished_at: string
+  duration_ms: number
+  checked_docs: number
+  new_invoices: number
+  updated_invoices: number
+  skipped_invoices: number
+  errors: SyncError
+}
+
+export interface SyncRunResponse extends SyncResponse {}

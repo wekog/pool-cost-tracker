@@ -77,7 +77,9 @@ def test_sync_inserts_auto_sources(monkeypatch):
     inv = db.scalar(select(Invoice).where(Invoice.paperless_doc_id == 1))
     assert inv is not None
     assert inv.vendor == 'Auto GmbH'
+    assert inv.vendor_auto == 'Auto GmbH'
     assert float(inv.amount) == 123.45
+    assert float(inv.amount_auto) == 123.45
     assert inv.vendor_source == 'auto'
     assert inv.amount_source == 'auto'
 
@@ -137,8 +139,10 @@ def test_sync_preserves_manual_vendor(monkeypatch):
 
     refreshed = db.get(Invoice, invoice.id)
     assert refreshed.vendor == 'Mein Unternehmen'
+    assert refreshed.vendor_auto == 'Auto überschrieben GmbH'
     assert refreshed.vendor_source == 'manual'
     assert float(refreshed.amount) == 222.22
+    assert float(refreshed.amount_auto) == 222.22
     assert refreshed.needs_review is False
 
 
@@ -167,6 +171,8 @@ def test_sync_preserves_manual_amount(monkeypatch):
 
     refreshed = db.get(Invoice, invoice.id)
     assert refreshed.vendor == 'Auto Vendor GmbH'
+    assert refreshed.vendor_auto == 'Auto Vendor GmbH'
     assert float(refreshed.amount) == 999.99
+    assert float(refreshed.amount_auto) == 444.44
     assert refreshed.amount_source == 'manual'
     assert refreshed.needs_review is False

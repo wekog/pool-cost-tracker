@@ -136,11 +136,16 @@ a {
   top: 0;
   z-index: 30;
   padding: 18px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
   gap: 16px;
   background: linear-gradient(180deg, rgba(18, 20, 26, 0.98), rgba(18, 20, 26, 0.94));
+}
+
+.topbar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .topbar-main {
@@ -150,6 +155,19 @@ a {
 
 .topbar-subtitle {
   word-break: break-word;
+}
+
+.topbar-status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  align-items: center;
+}
+
+.status-meta {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
 }
 
 .menu-button {
@@ -206,6 +224,31 @@ a {
   background: rgba(255, 255, 255, 0.06);
   color: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.range-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.range-toolbar label {
+  display: grid;
+  gap: 8px;
+  flex: 1 1 160px;
+  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.range-toolbar-action {
+  display: flex;
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+
+.range-toolbar-action .secondary-button {
+  width: 100%;
 }
 
 .table-button.danger {
@@ -442,6 +485,11 @@ thead th {
   white-space: nowrap;
 }
 
+.override-lock {
+  display: inline-block;
+  margin-right: 6px;
+}
+
 .empty-state {
   padding: 8px 0;
   color: rgba(255, 255, 255, 0.62);
@@ -515,8 +563,7 @@ thead th {
     padding: 16px;
   }
 
-  .topbar {
-    align-items: flex-start;
+  .topbar-head {
     flex-direction: column;
   }
 
@@ -532,6 +579,14 @@ thead th {
   .topbar-actions,
   .actions-row {
     flex-wrap: wrap;
+  }
+
+  .topbar-status {
+    justify-content: flex-start;
+  }
+
+  .range-toolbar-action {
+    width: 100%;
   }
 }
 

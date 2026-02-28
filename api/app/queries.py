@@ -3,10 +3,11 @@ from __future__ import annotations
 from sqlalchemy import cast, literal, select, union_all
 from sqlalchemy.sql.sqltypes import String
 
+from .date_ranges import ResolvedDateRange, apply_date_filter_to_date, apply_date_filter_to_datetime
 from .models import Invoice, ManualCost
 
 
-def all_costs_union_query():
+def all_costs_union_query(date_range: ResolvedDateRange | None = None):
     invoice_query = select(
         cast(Invoice.paperless_created, String).label('date'),
         Invoice.source.label('source'),
@@ -20,6 +21,8 @@ def all_costs_union_query():
         Invoice.confidence.label('confidence'),
         Invoice.needs_review.label('needs_review'),
     )
+    if date_range is not None:
+        invoice_query = apply_date_filter_to_datetime(invoice_query, Invoice.paperless_created, date_range)
 
     manual_query = select(
         cast(ManualCost.date, String).label('date'),
@@ -34,5 +37,7 @@ def all_costs_union_query():
         literal(None).label('confidence'),
         literal(None).label('needs_review'),
     )
+    if date_range is not None:
+        manual_query = apply_date_filter_to_date(manual_query, ManualCost.date, date_range)
 
     return union_all(invoice_query, manual_query)

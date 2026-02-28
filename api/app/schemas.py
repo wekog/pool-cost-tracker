@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime
-from typing import Any
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, Field
 
@@ -10,46 +10,50 @@ class InvoiceOut(BaseModel):
     id: int
     source: str
     paperless_doc_id: int
-    paperless_created: datetime.datetime | None = None
-    title: str | None = None
-    vendor: str | None = None
-    amount: float | None = None
+    paperless_created: Optional[datetime.datetime] = None
+    title: Optional[str] = None
+    vendor: Optional[str] = None
+    vendor_source: str
+    amount: Optional[float] = None
+    amount_source: str
     currency: str
     confidence: float
     needs_review: bool
     extracted_at: datetime.datetime
     updated_at: datetime.datetime
-    debug_json: str | None = None
-    correspondent: str | None = None
-    document_type: str | None = None
-    ocr_text: str | None = None
-    ocr_snippet: str | None = None
+    debug_json: Optional[str] = None
+    correspondent: Optional[str] = None
+    document_type: Optional[str] = None
+    ocr_text: Optional[str] = None
+    ocr_snippet: Optional[str] = None
 
     model_config = {'from_attributes': True}
 
 
 class InvoiceUpdate(BaseModel):
-    vendor: str | None = None
-    amount: float | None = None
-    needs_review: bool | None = None
+    vendor: Optional[str] = None
+    amount: Optional[float] = None
+    needs_review: Optional[bool] = None
+    reset_vendor: Optional[bool] = None
+    reset_amount: Optional[bool] = None
 
 
 class ManualCostCreate(BaseModel):
-    date: datetime.date | None = None
+    date: Optional[datetime.date] = None
     vendor: str = Field(min_length=1)
     amount: float = Field(gt=0)
     currency: str = 'EUR'
-    category: str | None = None
-    note: str | None = None
+    category: Optional[str] = None
+    note: Optional[str] = None
 
 
 class ManualCostUpdate(BaseModel):
-    date: datetime.date | None = None
-    vendor: str | None = None
-    amount: float | None = Field(default=None, gt=0)
-    currency: str | None = None
-    category: str | None = None
-    note: str | None = None
+    date: Optional[datetime.date] = None
+    vendor: Optional[str] = None
+    amount: Optional[float] = Field(default=None, gt=0)
+    currency: Optional[str] = None
+    category: Optional[str] = None
+    note: Optional[str] = None
 
 
 class ManualCostOut(BaseModel):
@@ -59,20 +63,28 @@ class ManualCostOut(BaseModel):
     vendor: str
     amount: float
     currency: str
-    category: str | None = None
-    note: str | None = None
+    category: Optional[str] = None
+    note: Optional[str] = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
     model_config = {'from_attributes': True}
 
 
+class SyncErrorOut(BaseModel):
+    count: int
+    first_error: Optional[str] = None
+
+
 class SyncResponse(BaseModel):
-    synced: int
-    inserted: int
-    updated: int
-    skipped: int
-    pool_tag_id: int
+    started_at: datetime.datetime
+    finished_at: datetime.datetime
+    duration_ms: int
+    checked_docs: int
+    new_invoices: int
+    updated_invoices: int
+    skipped_invoices: int
+    errors: SyncErrorOut
 
 
 class KeyValueAmount(BaseModel):
@@ -106,24 +118,41 @@ class ConfigOut(BaseModel):
     scheduler_run_on_startup: bool
 
 
+class HealthOut(BaseModel):
+    status: str
+    paperless_ok: bool
+    paperless_latency_ms: Optional[int] = None
+
+
+class SyncRunOut(BaseModel):
+    started_at: datetime.datetime
+    finished_at: datetime.datetime
+    duration_ms: int
+    checked_docs: int
+    new_invoices: int
+    updated_invoices: int
+    skipped_invoices: int
+    errors: SyncErrorOut
+
+
 class AllCostRow(BaseModel):
-    date: str | None
+    date: Optional[str]
     source: str
-    vendor: str | None
-    amount: float | None
-    currency: str | None
-    title: str | None
-    category: str | None
-    note: str | None
-    paperless_doc_id: int | None
-    confidence: float | None
-    needs_review: bool | None
+    vendor: Optional[str]
+    amount: Optional[float]
+    currency: Optional[str]
+    title: Optional[str]
+    category: Optional[str]
+    note: Optional[str]
+    paperless_doc_id: Optional[int]
+    confidence: Optional[float]
+    needs_review: Optional[bool]
 
 
 class ExtractionDebug(BaseModel):
-    keyword: str | None = None
-    regex: str | None = None
-    context_snippet: str | None = None
-    vendor_source: str | None = None
-    candidates_checked: int | None = None
-    extra: dict[str, Any] | None = None
+    keyword: Optional[str] = None
+    regex: Optional[str] = None
+    context_snippet: Optional[str] = None
+    vendor_source: Optional[str] = None
+    candidates_checked: Optional[int] = None
+    extra: Optional[Dict[str, Any]] = None

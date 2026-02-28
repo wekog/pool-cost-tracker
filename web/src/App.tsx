@@ -10,8 +10,10 @@ import type {
   ManualCost,
   ManualCostPayload,
   PageKey,
+  RangeKey,
   SummaryResponse,
   SyncResponse,
+  SyncRunResponse,
 } from './types'
 
 type NoticeType = 'success' | 'error' | 'info'
@@ -25,6 +27,12 @@ interface InvoiceFilters {
   needsReview: 'all' | 'only'
   search: string
   sort: 'date_desc' | 'date_asc' | 'amount_desc' | 'amount_asc'
+}
+
+interface ActiveRange {
+  range: RangeKey
+  from: string
+  to: string
 }
 
 function formatCurrency(value: number | null | undefined): string {
@@ -64,6 +72,35 @@ function formatDateOnly(value: string | null | undefined): string {
   }
 }
 
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`
+  }
+
+  return `${(durationMs / 1000).toFixed(1)}s`
+}
+
+function formatLastSync(value: string | null | undefined): string {
+  if (!value) {
+    return 'Noch kein Sync'
+  }
+
+  return formatDateTime(value)
+}
+
+function buildRangeParams(activeRange: ActiveRange): Record<string, string> {
+  const params: Record<string, string> = { range: activeRange.range }
+  if (activeRange.range === 'custom') {
+    if (activeRange.from) {
+      params.from = activeRange.from
+    }
+    if (activeRange.to) {
+      params.to = activeRange.to
+    }
+  }
+  return params
+}
+
 function App() {
   const [activePage, setActivePage] = useState<PageKey>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -71,7 +108,18 @@ function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [config, setConfig] = useState<ConfigResponse | null>(null)
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
+  const [lastSync, setLastSync] = useState<SyncRunResponse | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [rangeDraft, setRangeDraft] = useState<ActiveRange>({
+    range: 'month',
+    from: '',
+    to: '',
+  })
+  const [activeRange, setActiveRange] = useState<ActiveRange>({
+    range: 'month',
+    from: '',
+    to: '',
+  })
 
   const [invoiceDraft, setInvoiceDraft] = useState<InvoiceFilters>({
     needsReview: 'all',
@@ -117,15 +165,6 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (activePage === 'invoices') {
-      void loadInvoices(invoiceFilters)
-    }
-    if (activePage === 'manual') {
-      void loadManualCosts()
-    }
-  }, [activePage])
-
-  useEffect(() => {
     if (!invoiceEditor) {
       return
     }
@@ -151,6 +190,19 @@ function App() {
   }, [manualEditor])
 
   useEffect(() => {
+    if (activePage === 'invoices') {
+      void loadInvoices(invoiceFilters, activeRange)
+    }
+    if (activePage === 'manual') {
+      void loadManualCosts(activeRange)
+    }
+  }, [activePage, invoiceFilters, activeRange])
+
+  useEffect(() => {
+    void loadSummary(activeRange)
+  }, [activeRange])
+
+  useEffect(() => {
     document.body.style.overflow = sidebarOpen ? 'hidden' : ''
     return () => {
       document.body.style.overflow = ''
@@ -159,32 +211,34 @@ function App() {
 
   async function initialize() {
     try {
-      const [healthRes, configRes] = await Promise.all([
+      const [healthRes, configRes, lastSyncRes] = await Promise.all([
         api.get<HealthResponse>('/health'),
         api.get<ConfigResponse>('/config'),
+        api.get<SyncRunResponse | null>('/sync/last'),
       ])
       setHealth(healthRes.data)
       setConfig(configRes.data)
-      await loadSummary()
+      setLastSync(lastSyncRes.data)
     } catch (error) {
       showNotice('error', extractApiError(error))
     }
   }
 
-  async function loadSummary() {
+  async function loadSummary(range: ActiveRange) {
     try {
-      const response = await api.get<SummaryResponse>('/summary')
+      const response = await api.get<SummaryResponse>('/summary', { params: buildRangeParams(range) })
       setSummary(response.data)
     } catch (error) {
       showNotice('error', extractApiError(error))
     }
   }
 
-  async function loadInvoices(filters: InvoiceFilters) {
+  async function loadInvoices(filters: InvoiceFilters, range: ActiveRange) {
     setInvoiceLoading(true)
     try {
       const params: Record<string, string> = {
         sort: filters.sort,
+        ...buildRangeParams(range),
       }
       if (filters.needsReview === 'only') {
         params.needs_review = 'true'
@@ -201,10 +255,10 @@ function App() {
     }
   }
 
-  async function loadManualCosts() {
+  async function loadManualCosts(range: ActiveRange) {
     setManualLoading(true)
     try {
-      const response = await api.get<ManualCost[]>('/manual-costs')
+      const response = await api.get<ManualCost[]>('/manual-costs', { params: buildRangeParams(range) })
       setManualCosts(response.data)
     } catch (error) {
       showNotice('error', extractApiError(error))
@@ -217,14 +271,22 @@ function App() {
     setSyncing(true)
     try {
       const response = await api.post<SyncResponse>('/sync')
+      setLastSync(response.data)
+      const errorSuffix =
+        response.data.errors.count > 0
+          ? ` Fehler: ${response.data.errors.count}${response.data.errors.first_error ? ` (${response.data.errors.first_error})` : ''}.`
+          : ''
       showNotice(
         'success',
-        `${response.data.synced} Dokumente synchronisiert (${response.data.inserted} neu, ${response.data.updated} aktualisiert).`,
+        `Sync abgeschlossen: ${response.data.checked_docs} geprüft, ${response.data.new_invoices} neu, ${response.data.updated_invoices} aktualisiert (${formatDuration(response.data.duration_ms)}).${errorSuffix}`,
       )
-      await loadSummary()
-      if (activePage === 'invoices') {
-        await loadInvoices(invoiceFilters)
-      }
+      const [healthRes] = await Promise.all([
+        api.get<HealthResponse>('/health'),
+        loadSummary(activeRange),
+        activePage === 'invoices' ? loadInvoices(invoiceFilters, activeRange) : Promise.resolve(),
+        activePage === 'manual' ? loadManualCosts(activeRange) : Promise.resolve(),
+      ])
+      setHealth(healthRes.data)
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -245,10 +307,32 @@ function App() {
 
     setInvoiceSaving(true)
     try {
-      await api.put(`/invoices/${invoiceEditor.id}`, payload)
+      const response = await api.put<Invoice>(`/invoices/${invoiceEditor.id}`, payload)
+      setInvoiceEditor(response.data)
       showNotice('success', 'Rechnung aktualisiert.')
-      setInvoiceEditor(null)
-      await Promise.all([loadInvoices(invoiceFilters), loadSummary()])
+      await Promise.all([loadInvoices(invoiceFilters, activeRange), loadSummary(activeRange)])
+    } catch (error) {
+      showNotice('error', extractApiError(error))
+    } finally {
+      setInvoiceSaving(false)
+    }
+  }
+
+  async function handleInvoiceReset(field: 'vendor' | 'amount') {
+    if (!invoiceEditor) {
+      return
+    }
+
+    setInvoiceSaving(true)
+    try {
+      const payload: InvoiceUpdatePayload =
+        field === 'vendor'
+          ? { reset_vendor: true }
+          : { reset_amount: true }
+      const response = await api.put<Invoice>(`/invoices/${invoiceEditor.id}`, payload)
+      setInvoiceEditor(response.data)
+      showNotice('success', `${field === 'vendor' ? 'Unternehmen' : 'Betrag'} wieder auf automatisch gesetzt.`)
+      await Promise.all([loadInvoices(invoiceFilters, activeRange), loadSummary(activeRange)])
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -286,7 +370,7 @@ function App() {
         category: '',
         note: '',
       })
-      await Promise.all([loadManualCosts(), loadSummary()])
+      await Promise.all([loadManualCosts(activeRange), loadSummary(activeRange)])
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -321,7 +405,7 @@ function App() {
       } satisfies ManualCostPayload)
       showNotice('success', 'Eintrag aktualisiert.')
       setManualEditor(null)
-      await Promise.all([loadManualCosts(), loadSummary()])
+      await Promise.all([loadManualCosts(activeRange), loadSummary(activeRange)])
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -334,7 +418,7 @@ function App() {
     try {
       await api.delete(`/manual-costs/${itemId}`)
       showNotice('success', 'Eintrag gelöscht.')
-      await Promise.all([loadManualCosts(), loadSummary()])
+      await Promise.all([loadManualCosts(activeRange), loadSummary(activeRange)])
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -351,6 +435,14 @@ function App() {
     setSidebarOpen(false)
   }
 
+  function handleRangeApply() {
+    if (rangeDraft.range === 'custom' && (!rangeDraft.from || !rangeDraft.to)) {
+      showNotice('error', 'Bitte für den benutzerdefinierten Zeitraum Start und Ende setzen.')
+      return
+    }
+    setActiveRange(rangeDraft)
+  }
+
   const topVendors = useMemo(() => summary?.top_vendors ?? [], [summary])
   const topCategories = useMemo(() => summary?.costs_by_category ?? [], [summary])
   const maxVendorAmount = Math.max(...topVendors.map((item) => item.amount), 1)
@@ -358,6 +450,11 @@ function App() {
   const projectName = config?.project_name?.trim() || 'Pool'
   const projectTagName = config?.project_tag_name?.trim() || config?.pool_tag_name?.trim() || 'Pool'
   const schedulerStatus = config?.scheduler_enabled ? 'aktiv' : 'inaktiv'
+  const paperlessStatus = health?.paperless_ok ? '🟢 erreichbar' : '🔴 prüfen'
+  const exportHref = useMemo(() => {
+    const params = new URLSearchParams(buildRangeParams(activeRange))
+    return `/api/export.csv?${params.toString()}`
+  }, [activeRange])
 
   return (
     <div className="app-shell">
@@ -392,22 +489,71 @@ function App() {
 
       <main className="main-shell">
         <header className="topbar panel">
-          <div className="topbar-main">
-            <button className="menu-button" onClick={() => setSidebarOpen(true)} aria-label="Navigation öffnen">
-              <span />
-              <span />
-              <span />
-            </button>
-            <div className="topbar-title">{projectName}</div>
-            <div className="muted-text topbar-subtitle">
-              Kostenübersicht | Paperless: {config?.paperless_base_url ?? 'lädt...'} | Scheduler: {schedulerStatus}
-              {config ? ` (${config.scheduler_interval_minutes} min)` : ''} | Tag: {projectTagName}
+          <div className="topbar-head">
+            <div className="topbar-main">
+              <button className="menu-button" onClick={() => setSidebarOpen(true)} aria-label="Navigation öffnen">
+                <span />
+                <span />
+                <span />
+              </button>
+              <div className="topbar-title">Poolkosten</div>
+              <div className="muted-text topbar-subtitle">
+                Projekt: {projectName} · Tag: {projectTagName} · Scheduler: {schedulerStatus}
+                {config ? ` (${config.scheduler_interval_minutes} min)` : ''}
+              </div>
+            </div>
+            <div className="topbar-status">
+              <div className="status-chip" title={health?.paperless_latency_ms ? `Latenz ${health.paperless_latency_ms}ms` : 'Paperless Status'}>
+                Paperless {paperlessStatus}
+              </div>
+              <div className="status-meta">Letzter Sync: {formatLastSync(lastSync?.finished_at)}</div>
+              <button className="primary-button" onClick={() => void handleSync()} disabled={syncing}>
+                {syncing ? 'Synchronisiert…' : 'Sync jetzt'}
+              </button>
             </div>
           </div>
-          <div className="topbar-actions">
-            <button className="primary-button" onClick={() => void handleSync()} disabled={syncing}>
-              {syncing ? 'Synchronisiert…' : 'Sync jetzt'}
-            </button>
+
+          <div className="range-toolbar">
+            <label>
+              Zeitraum
+              <select
+                value={rangeDraft.range}
+                onChange={(event) =>
+                  setRangeDraft((current) => ({ ...current, range: event.target.value as RangeKey }))
+                }
+              >
+                <option value="month">Aktueller Monat</option>
+                <option value="last_month">Letzter Monat</option>
+                <option value="year">Aktuelles Jahr</option>
+                <option value="all">Alle</option>
+                <option value="custom">Benutzerdefiniert</option>
+              </select>
+            </label>
+            {rangeDraft.range === 'custom' && (
+              <>
+                <label>
+                  Von
+                  <input
+                    type="date"
+                    value={rangeDraft.from}
+                    onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  Bis
+                  <input
+                    type="date"
+                    value={rangeDraft.to}
+                    onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
+                  />
+                </label>
+              </>
+            )}
+            <div className="range-toolbar-action">
+              <button className="secondary-button" onClick={handleRangeApply}>
+                Zeitraum anwenden
+              </button>
+            </div>
           </div>
         </header>
 
@@ -509,7 +655,6 @@ function App() {
                     className="primary-button"
                     onClick={() => {
                       setInvoiceFilters(invoiceDraft)
-                      void loadInvoices(invoiceDraft)
                     }}
                     disabled={invoiceLoading}
                   >
@@ -544,8 +689,22 @@ function App() {
                     {invoices.map((invoice) => (
                       <tr key={invoice.id}>
                         <td className="cell-nowrap">{formatDateTime(invoice.paperless_created)}</td>
-                        <td className="cell-nowrap">{invoice.vendor ?? '–'}</td>
-                        <td className="cell-nowrap">{formatCurrency(invoice.amount)}</td>
+                        <td className="cell-nowrap">
+                          {invoice.vendor_source === 'manual' && (
+                            <span className="override-lock" title="Manuell angepasst – wird beim Sync nicht überschrieben">
+                              🔒
+                            </span>
+                          )}
+                          {invoice.vendor ?? '–'}
+                        </td>
+                        <td className="cell-nowrap">
+                          {invoice.amount_source === 'manual' && (
+                            <span className="override-lock" title="Manuell angepasst – wird beim Sync nicht überschrieben">
+                              🔒
+                            </span>
+                          )}
+                          {formatCurrency(invoice.amount)}
+                        </td>
                         <td className="cell-truncate">{invoice.title ?? '–'}</td>
                         <td className="cell-nowrap">{Math.round(invoice.confidence * 100)}%</td>
                         <td className="cell-nowrap">{invoice.needs_review ? 'Ja' : 'Nein'}</td>
@@ -678,7 +837,7 @@ function App() {
               <h2>Export</h2>
               <p className="muted-text">CSV wird direkt über die API ausgeliefert. Der Download läuft im gleichen Origin über den UI-Proxy.</p>
               <div className="actions-row">
-                <a className="primary-button link-button" href="/api/export.csv" target="_blank" rel="noreferrer">
+                <a className="primary-button link-button" href={exportHref} target="_blank" rel="noreferrer">
                   CSV herunterladen
                 </a>
               </div>
@@ -731,6 +890,16 @@ function App() {
                 </label>
               </div>
               <div className="actions-row">
+                {invoiceEditor.vendor_source === 'manual' && (
+                  <button className="secondary-button" onClick={() => void handleInvoiceReset('vendor')} disabled={invoiceSaving}>
+                    Unternehmen auf auto
+                  </button>
+                )}
+                {invoiceEditor.amount_source === 'manual' && (
+                  <button className="secondary-button" onClick={() => void handleInvoiceReset('amount')} disabled={invoiceSaving}>
+                    Betrag auf auto
+                  </button>
+                )}
                 <button className="primary-button" onClick={() => void handleInvoiceSave()} disabled={invoiceSaving}>
                   {invoiceSaving ? 'Speichert…' : 'Speichern'}
                 </button>
