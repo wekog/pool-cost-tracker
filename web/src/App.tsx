@@ -335,6 +335,10 @@ function App() {
       setConfig(configRes.data)
       setLastSync(lastSyncRes.data)
       setSyncRuns(syncRunsRes.data)
+      setManualForm((current) => ({
+        ...current,
+        currency: configRes.data.default_currency?.trim() || 'EUR',
+      }))
     } catch (error) {
       showNotice('error', extractApiError(error))
     }
@@ -594,7 +598,7 @@ function App() {
         date: manualForm.date || null,
         vendor: manualForm.vendor.trim(),
         amount,
-        currency: 'EUR',
+        currency: manualForm.currency || defaultCurrency,
         category: manualForm.category?.trim() || null,
         note: manualForm.note?.trim() || null,
       } satisfies ManualCostPayload)
@@ -603,7 +607,7 @@ function App() {
         date: format(new Date(), 'yyyy-MM-dd'),
         vendor: '',
         amount: 0,
-        currency: 'EUR',
+        currency: defaultCurrency,
         category: '',
         note: '',
       })
@@ -636,7 +640,7 @@ function App() {
         date: manualForm.date || null,
         vendor: manualForm.vendor.trim(),
         amount,
-        currency: 'EUR',
+        currency: manualForm.currency || defaultCurrency,
         category: manualForm.category?.trim() || null,
         note: manualForm.note?.trim() || null,
       } satisfies ManualCostPayload)
@@ -697,8 +701,10 @@ function App() {
   const topCategories = useMemo(() => summary?.costs_by_category ?? [], [summary])
   const maxVendorAmount = Math.max(...topVendors.map((item) => item.amount), 1)
   const maxCategoryAmount = Math.max(...topCategories.map((item) => item.amount), 1)
+  const appTitle = 'Kostenübersicht'
   const projectName = config?.project_name?.trim() || 'Pool'
   const projectTagName = config?.project_tag_name?.trim() || config?.pool_tag_name?.trim() || 'Pool'
+  const defaultCurrency = config?.default_currency?.trim() || 'EUR'
   const schedulerStatus = config?.scheduler_enabled ? 'aktiv' : 'inaktiv'
   const paperlessStatus = health?.paperless_ok ? '🟢 erreichbar' : '🔴 prüfen'
   const exportBaseParams = useMemo(() => {
@@ -733,8 +739,8 @@ function App() {
 
       <aside className={`sidebar ${sidebarOpen ? 'mobile-open' : ''}`}>
         <div>
-          <div className="sidebar-title">{projectName}</div>
-          <div className="sidebar-subtitle">Kostenübersicht</div>
+          <div className="sidebar-title">{appTitle}</div>
+          <div className="sidebar-subtitle">Projekt: {projectName}</div>
         </div>
 
         <nav className="nav-list">
@@ -771,9 +777,9 @@ function App() {
                 <span />
                 <span />
               </button>
-              <div className="topbar-title">Poolkosten</div>
+              <div className="topbar-title">{appTitle}</div>
               <div className="muted-text topbar-subtitle">
-                Projekt: {projectName} · Tag: {projectTagName} · Scheduler: {schedulerStatus}
+                Projekt: {projectName} · Tag: {projectTagName} · Standard: {defaultCurrency} · Scheduler: {schedulerStatus}
                 {config ? ` (${config.scheduler_interval_minutes} min)` : ''}
               </div>
             </div>
@@ -1156,7 +1162,7 @@ function App() {
                   <input
                     value={invoiceDraft.search}
                     onChange={(event) => setInvoiceDraft((current) => ({ ...current, search: event.target.value }))}
-                    placeholder="z. B. Poolbau"
+                    placeholder="z. B. Muster GmbH"
                   />
                 </label>
                 <label>
@@ -1265,7 +1271,7 @@ function App() {
                   <input
                     value={manualForm.vendor}
                     onChange={(event) => setManualForm((current) => ({ ...current, vendor: event.target.value }))}
-                    placeholder="z. B. Poolbau Müller GmbH"
+                    placeholder="z. B. Musterfirma GmbH"
                   />
                 </label>
                 <label>

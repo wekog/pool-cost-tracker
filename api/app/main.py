@@ -3,10 +3,12 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Query
@@ -231,6 +233,18 @@ def _paperless_document_url(settings: Settings, doc_id: Optional[int]) -> str:
     return f"{base_url.rstrip('/')}/documents/{doc_id}/details/"
 
 
+def _project_category_presets(settings: Settings) -> list[str]:
+    if not settings.PROJECT_CATEGORY_PRESETS:
+        return []
+    return [part.strip() for part in settings.PROJECT_CATEGORY_PRESETS.split(',') if part.strip()]
+
+
+def _export_filename(settings: Settings) -> str:
+    today = datetime.now(ZoneInfo(settings.PROJECT_TIMEZONE)).date().isoformat()
+    slug = re.sub(r'[^a-z0-9]+', '-', settings.PROJECT_NAME.lower()).strip('-') or 'project'
+    return f'{slug}_{today}_export.csv'
+
+
 @app.get('/health', response_model=HealthOut)
 async def health():
     settings = get_settings()
@@ -252,6 +266,9 @@ def get_config():
         project_name=settings.PROJECT_NAME,
         project_tag_name=settings.PROJECT_TAG_NAME,
         pool_tag_name=settings.POOL_TAG_NAME,
+        default_currency=settings.DEFAULT_CURRENCY,
+        category_presets=_project_category_presets(settings),
+        timezone=settings.PROJECT_TIMEZONE,
         scheduler_enabled=settings.SCHEDULER_ENABLED,
         scheduler_interval_minutes=settings.SCHEDULER_INTERVAL_MINUTES,
         scheduler_run_on_startup=settings.SCHEDULER_RUN_ON_STARTUP,
@@ -398,12 +415,13 @@ def resolve_invoice_review(invoice_id: int, db: Session = Depends(get_db)):
 
 @app.post('/manual-costs', response_model=ManualCostOut)
 def create_manual_cost(payload: ManualCostCreate, db: Session = Depends(get_db)):
+    settings = get_settings()
     item = ManualCost(
         source='manual',
         date=payload.date or date.today(),
         vendor=payload.vendor,
         amount=Decimal(str(payload.amount)),
-        currency=payload.currency,
+        currency=payload.currency or settings.DEFAULT_CURRENCY,
         category=payload.category,
         note=payload.note,
     )
@@ -647,5 +665,5 @@ def export_csv(
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type='text/csv',
-        headers={'Content-Disposition': 'attachment; filename=pool_costs_export.csv'},
+        headers={'Content-Disposition': f'attachment; filename={_export_filename(settings)}'},
     )

@@ -47,7 +47,7 @@ class ManualCostCreate(BaseModel):
     date: Optional[datetime.date] = None
     vendor: str = Field(min_length=1)
     amount: float = Field(gt=0)
-    currency: str = 'EUR'
+    currency: Optional[str] = None
     category: Optional[str] = None
     note: Optional[str] = None
 
@@ -120,6 +120,9 @@ class ConfigOut(BaseModel):
     project_name: str
     project_tag_name: str
     pool_tag_name: str
+    default_currency: str
+    category_presets: list[str]
+    timezone: str
     scheduler_enabled: bool
     scheduler_interval_minutes: int
     scheduler_run_on_startup: bool

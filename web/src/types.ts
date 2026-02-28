@@ -14,6 +14,9 @@ export interface ConfigResponse {
   project_name: string
   project_tag_name: string
   pool_tag_name: string
+  default_currency: string
+  category_presets: string[]
+  timezone: string
   scheduler_enabled: boolean
   scheduler_interval_minutes: number
   scheduler_run_on_startup: boolean

@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 import os
 from typing import Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, ValidationError
 try:
@@ -29,6 +30,9 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = Field(default='Pool')
     PROJECT_TAG_NAME: Optional[str] = Field(default=None)
     POOL_TAG_NAME: Optional[str] = Field(default=None)
+    DEFAULT_CURRENCY: str = Field(default='EUR')
+    PROJECT_TIMEZONE: str = Field(default='Europe/Berlin')
+    PROJECT_CATEGORY_PRESETS: str = Field(default='')
     SYNC_PAGE_SIZE: int = Field(default=100)
     SYNC_LOOKBACK_DAYS: int = Field(default=365)
     DATABASE_URL: str = Field(default='sqlite:////data/app.db')
@@ -78,4 +82,21 @@ def get_settings() -> Settings:
     settings.PROJECT_NAME = project_name
     settings.PROJECT_TAG_NAME = project_tag_name
     settings.POOL_TAG_NAME = project_tag_name
+    settings.DEFAULT_CURRENCY = (settings.DEFAULT_CURRENCY or '').strip().upper() or 'EUR'
+
+    project_timezone = (settings.PROJECT_TIMEZONE or '').strip() or 'Europe/Berlin'
+    try:
+        ZoneInfo(project_timezone)
+    except ZoneInfoNotFoundError:
+        project_timezone = 'Europe/Berlin'
+    settings.PROJECT_TIMEZONE = project_timezone
+
+    settings.PROJECT_CATEGORY_PRESETS = ', '.join(
+        value
+        for value in [
+            part.strip()
+            for part in (settings.PROJECT_CATEGORY_PRESETS or '').split(',')
+        ]
+        if value
+    )
     return settings

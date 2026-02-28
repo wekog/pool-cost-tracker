@@ -15,6 +15,7 @@ os.environ.setdefault('PROJECT_TAG_NAME', 'Pool')
 from api.app import main
 from api.app.database import Base
 from api.app.models import Invoice, ManualCost, SyncRun
+from api.app.settings import get_settings
 
 
 def _make_db_session():
@@ -101,6 +102,10 @@ def _seed_phase2_data(db):
 def test_export_csv_filters_by_needs_review_and_source(monkeypatch):
     db = _make_db_session()
     _seed_phase2_data(db)
+    monkeypatch.setenv('PROJECT_NAME', 'Gartenhaus Nord')
+    monkeypatch.setenv('PROJECT_TAG_NAME', 'Gartenhaus')
+    monkeypatch.setenv('PROJECT_TIMEZONE', 'Europe/Berlin')
+    get_settings.cache_clear()
 
     response = main.export_csv(
         range_key='all',
@@ -118,6 +123,9 @@ def test_export_csv_filters_by_needs_review_and_source(monkeypatch):
     assert len(rows) == 1
     assert rows[0]['company'] == 'Review GmbH'
     assert rows[0]['source'] == 'paperless'
+    assert rows[0]['project_name'] == 'Gartenhaus Nord'
+    assert rows[0]['project_tag'] == 'Gartenhaus'
+    assert 'gartenhaus-nord_' in response.headers['Content-Disposition']
 
     response = main.export_csv(
         range_key='all',
@@ -135,6 +143,7 @@ def test_export_csv_filters_by_needs_review_and_source(monkeypatch):
     assert len(rows) == 1
     assert rows[0]['company'] == 'Active Manual'
     assert rows[0]['source'] == 'manual'
+    get_settings.cache_clear()
 
 
 def test_manual_cost_archive_restore_and_filtering():

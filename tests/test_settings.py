@@ -27,6 +27,9 @@ def test_settings_defaults_to_project_values(monkeypatch):
     assert settings.PROJECT_NAME == 'Pool'
     assert settings.PROJECT_TAG_NAME == 'Pool'
     assert settings.POOL_TAG_NAME == 'Pool'
+    assert settings.DEFAULT_CURRENCY == 'EUR'
+    assert settings.PROJECT_TIMEZONE == 'Europe/Berlin'
+    assert settings.PROJECT_CATEGORY_PRESETS == ''
 
 
 def test_settings_uses_legacy_pool_tag_when_project_tag_missing(monkeypatch):
@@ -53,3 +56,17 @@ def test_project_tag_name_takes_priority_over_legacy_pool_tag(monkeypatch):
 
     assert settings.PROJECT_TAG_NAME == 'NeuesTag'
     assert settings.POOL_TAG_NAME == 'NeuesTag'
+
+
+def test_settings_parse_project_defaults_and_normalize_timezone(monkeypatch):
+    monkeypatch.setenv('PAPERLESS_BASE_URL', 'http://paperless.local:8000')
+    monkeypatch.setenv('PAPERLESS_TOKEN', 'test-token')
+    monkeypatch.setenv('DEFAULT_CURRENCY', 'usd')
+    monkeypatch.setenv('PROJECT_TIMEZONE', 'Invalid/Timezone')
+    monkeypatch.setenv('PROJECT_CATEGORY_PRESETS', 'Material, Reparatur , , Wartung')
+
+    settings = get_settings()
+
+    assert settings.DEFAULT_CURRENCY == 'USD'
+    assert settings.PROJECT_TIMEZONE == 'Europe/Berlin'
+    assert settings.PROJECT_CATEGORY_PRESETS == 'Material, Reparatur, Wartung'
