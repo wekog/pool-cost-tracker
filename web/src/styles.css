@@ -335,6 +335,13 @@ a {
   padding-top: 18px;
 }
 
+.section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
 .panel > .muted-text {
   padding-top: 4px;
 }
@@ -460,6 +467,10 @@ table {
   min-width: 900px;
 }
 
+.sync-table {
+  min-width: 720px;
+}
+
 th,
 td {
   padding: 12px 10px;
@@ -488,6 +499,14 @@ thead th {
 .override-lock {
   display: inline-block;
   margin-right: 6px;
+}
+
+.clickable-row {
+  cursor: pointer;
+}
+
+.clickable-row:hover {
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .empty-state {
@@ -519,6 +538,20 @@ thead th {
   width: auto;
   min-height: 20px;
   min-width: 20px;
+}
+
+.toggle-inline {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.toggle-inline input {
+  width: auto;
+  min-width: 20px;
+  min-height: 20px;
 }
 
 @media (max-width: 1080px) {
@@ -555,6 +588,10 @@ thead th {
   .metrics-grid,
   .form-grid-filters {
     grid-template-columns: 1fr;
+  }
+
+  .section-header {
+    flex-wrap: wrap;
   }
 }
 

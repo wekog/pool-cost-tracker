@@ -4,7 +4,7 @@ import csv
 import io
 import json
 from contextlib import asynccontextmanager
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
@@ -18,7 +18,6 @@ from .date_ranges import apply_date_filter_to_date, apply_date_filter_to_datetim
 from .database import Base, SessionLocal, engine, ensure_schema_compatibility, get_db
 from .models import Invoice, ManualCost, SyncRun
 from .paperless import PaperlessClient
-from .queries import all_costs_union_query
 from .scheduler import SyncScheduler
 from .schemas import ConfigOut, HealthOut, InvoiceOut, InvoiceUpdate, ManualCostCreate, ManualCostOut, ManualCostUpdate, SummaryOut, SyncResponse, SyncRunOut
 from .settings import Settings, get_settings
@@ -68,6 +67,8 @@ def _manual_to_out(item: ManualCost) -> ManualCostOut:
         currency=item.currency,
         category=item.category,
         note=item.note,
+        is_archived=item.is_archived,
+        archived_at=item.archived_at,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -105,13 +106,122 @@ def _resolve_requested_date_range(
     to_value: Optional[str],
 ):
     try:
-        return resolve_date_range(range_key=range_key, from_value=from_value, to_value=to_value)
+        normalized_range_key = range_key if isinstance(range_key, str) else 'month'
+        normalized_from_value = from_value if isinstance(from_value, str) else None
+        normalized_to_value = to_value if isinstance(to_value, str) else None
+        return resolve_date_range(
+            range_key=normalized_range_key,
+            from_value=normalized_from_value,
+            to_value=normalized_to_value,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 def _get_last_sync_run_record(db: Session) -> Optional[SyncRun]:
     return db.scalar(select(SyncRun).order_by(SyncRun.finished_at.desc(), SyncRun.id.desc()).limit(1))
+
+
+def _normalize_archived_filter(value: str = 'active') -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else 'active'
+    if normalized not in {'active', 'archived', 'all'}:
+        raise HTTPException(status_code=422, detail="Ungültiger archived-Wert. Erlaubt: active, archived, all.")
+    return normalized
+
+
+def _normalize_source_filter(value: str = 'all') -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else 'all'
+    if normalized not in {'paperless', 'manual', 'all'}:
+        raise HTTPException(status_code=422, detail="Ungültiger source-Wert. Erlaubt: paperless, manual, all.")
+    return normalized
+
+
+def _normalize_sort(value: str = 'date_desc') -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else 'date_desc'
+    if normalized not in {'date_desc', 'date_asc', 'amount_desc', 'amount_asc'}:
+        raise HTTPException(status_code=422, detail="Ungültiger sort-Wert. Erlaubt: date_desc, date_asc, amount_desc, amount_asc.")
+    return normalized
+
+
+def _normalize_export_needs_review(value: str = 'all') -> Optional[bool]:
+    normalized = value.strip().lower() if isinstance(value, str) else 'all'
+    if normalized == 'all':
+        return None
+    if normalized == 'true':
+        return True
+    if normalized == 'false':
+        return False
+    raise HTTPException(status_code=422, detail="Ungültiger needs_review-Wert. Erlaubt: true, false, all.")
+
+
+def _build_invoice_stmt(
+    date_range,
+    *,
+    search: Optional[str] = None,
+    needs_review: Optional[bool] = None,
+    sort: str = 'date_desc',
+):
+    stmt = select(Invoice)
+    stmt = apply_date_filter_to_datetime(stmt, Invoice.paperless_created, date_range)
+    if needs_review is not None:
+        stmt = stmt.where(Invoice.needs_review == needs_review)
+    search_term = search.strip() if isinstance(search, str) else ''
+    if search_term:
+        like = f'%{search_term}%'
+        stmt = stmt.where(or_(Invoice.vendor.ilike(like), Invoice.title.ilike(like)))
+
+    normalized_sort = _normalize_sort(sort)
+    if normalized_sort == 'amount_desc':
+        stmt = stmt.order_by(Invoice.amount.desc().nullslast(), Invoice.id.desc())
+    elif normalized_sort == 'amount_asc':
+        stmt = stmt.order_by(Invoice.amount.asc().nullsfirst(), Invoice.id.desc())
+    elif normalized_sort == 'date_asc':
+        stmt = stmt.order_by(Invoice.paperless_created.asc().nullsfirst(), Invoice.id.desc())
+    else:
+        stmt = stmt.order_by(Invoice.paperless_created.desc().nullslast(), Invoice.id.desc())
+    return stmt
+
+
+def _build_manual_stmt(
+    date_range,
+    *,
+    archived: str = 'active',
+    search: Optional[str] = None,
+    sort: str = 'date_desc',
+):
+    stmt = select(ManualCost)
+    stmt = apply_date_filter_to_date(stmt, ManualCost.date, date_range)
+
+    archived_mode = _normalize_archived_filter(archived)
+    if archived_mode == 'active':
+        stmt = stmt.where(ManualCost.is_archived.is_(False))
+    elif archived_mode == 'archived':
+        stmt = stmt.where(ManualCost.is_archived.is_(True))
+
+    search_term = search.strip() if isinstance(search, str) else ''
+    if search_term:
+        like = f'%{search_term}%'
+        stmt = stmt.where(ManualCost.vendor.ilike(like))
+
+    normalized_sort = _normalize_sort(sort)
+    if normalized_sort == 'amount_desc':
+        stmt = stmt.order_by(ManualCost.amount.desc(), ManualCost.id.desc())
+    elif normalized_sort == 'amount_asc':
+        stmt = stmt.order_by(ManualCost.amount.asc(), ManualCost.id.desc())
+    elif normalized_sort == 'date_asc':
+        stmt = stmt.order_by(ManualCost.date.asc(), ManualCost.id.desc())
+    else:
+        stmt = stmt.order_by(ManualCost.date.desc(), ManualCost.id.desc())
+    return stmt
+
+
+def _paperless_document_url(settings: Settings, doc_id: Optional[int]) -> str:
+    if doc_id is None:
+        return ''
+    base_url = (settings.PAPERLESS_BASE_URL or '').strip()
+    if not base_url:
+        return ''
+    return f"{base_url.rstrip('/')}/documents/{doc_id}/details/"
 
 
 @app.get('/health', response_model=HealthOut)
@@ -180,6 +290,12 @@ def last_sync(db: Session = Depends(get_db)):
     return sync_run_to_out(last_run)
 
 
+@app.get('/sync/runs', response_model=list[SyncRunOut])
+def sync_runs(limit: int = Query(default=10, ge=1, le=50), db: Session = Depends(get_db)):
+    rows = db.scalars(select(SyncRun).order_by(SyncRun.finished_at.desc(), SyncRun.id.desc()).limit(limit)).all()
+    return [sync_run_to_out(row) for row in rows]
+
+
 @app.get('/invoices', response_model=list[InvoiceOut])
 def get_invoices(
     needs_review: Optional[bool] = Query(default=None),
@@ -191,25 +307,17 @@ def get_invoices(
     db: Session = Depends(get_db),
 ):
     date_range = _resolve_requested_date_range(range_key, from_value, to_value)
-    stmt = select(Invoice)
-    stmt = apply_date_filter_to_datetime(stmt, Invoice.paperless_created, date_range)
-    if needs_review is not None:
-        stmt = stmt.where(Invoice.needs_review == needs_review)
-    if search:
-        like = f'%{search.strip()}%'
-        stmt = stmt.where(or_(Invoice.vendor.ilike(like), Invoice.title.ilike(like)))
-
-    if sort == 'amount_desc':
-        stmt = stmt.order_by(Invoice.amount.desc().nullslast(), Invoice.id.desc())
-    elif sort == 'amount_asc':
-        stmt = stmt.order_by(Invoice.amount.asc().nullsfirst(), Invoice.id.desc())
-    elif sort == 'date_asc':
-        stmt = stmt.order_by(Invoice.paperless_created.asc().nullsfirst(), Invoice.id.desc())
-    elif sort == 'vendor_asc':
+    if sort == 'vendor_asc':
+        stmt = select(Invoice)
+        stmt = apply_date_filter_to_datetime(stmt, Invoice.paperless_created, date_range)
+        if needs_review is not None:
+            stmt = stmt.where(Invoice.needs_review == needs_review)
+        if search:
+            like = f'%{search.strip()}%'
+            stmt = stmt.where(or_(Invoice.vendor.ilike(like), Invoice.title.ilike(like)))
         stmt = stmt.order_by(Invoice.vendor.asc().nullslast(), Invoice.id.desc())
     else:
-        stmt = stmt.order_by(Invoice.paperless_created.desc().nullslast(), Invoice.id.desc())
-
+        stmt = _build_invoice_stmt(date_range, search=search, needs_review=needs_review, sort=sort)
     rows = db.scalars(stmt).all()
     return [_invoice_to_out(r) for r in rows]
 
@@ -277,11 +385,11 @@ def list_manual_costs(
     range_key: str = Query(default='month', alias='range'),
     from_value: Optional[str] = Query(default=None, alias='from'),
     to_value: Optional[str] = Query(default=None, alias='to'),
+    archived: str = Query(default='active'),
     db: Session = Depends(get_db),
 ):
     date_range = _resolve_requested_date_range(range_key, from_value, to_value)
-    stmt = select(ManualCost).order_by(ManualCost.date.desc(), ManualCost.id.desc())
-    stmt = apply_date_filter_to_date(stmt, ManualCost.date, date_range)
+    stmt = _build_manual_stmt(date_range, archived=archived)
     rows = db.scalars(stmt).all()
     return [_manual_to_out(r) for r in rows]
 
@@ -302,14 +410,28 @@ def update_manual_cost(item_id: int, payload: ManualCostUpdate, db: Session = De
     return _manual_to_out(item)
 
 
-@app.delete('/manual-costs/{item_id}')
-def delete_manual_cost(item_id: int, db: Session = Depends(get_db)):
+@app.patch('/manual-costs/{item_id}/archive', response_model=ManualCostOut)
+def archive_manual_cost(item_id: int, db: Session = Depends(get_db)):
     item = db.get(ManualCost, item_id)
     if not item:
         raise HTTPException(status_code=404, detail='Manual cost not found')
-    db.delete(item)
+    item.is_archived = True
+    item.archived_at = datetime.utcnow()
     db.commit()
-    return {'deleted': True}
+    db.refresh(item)
+    return _manual_to_out(item)
+
+
+@app.patch('/manual-costs/{item_id}/restore', response_model=ManualCostOut)
+def restore_manual_cost(item_id: int, db: Session = Depends(get_db)):
+    item = db.get(ManualCost, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail='Manual cost not found')
+    item.is_archived = False
+    item.archived_at = None
+    db.commit()
+    db.refresh(item)
+    return _manual_to_out(item)
 
 
 @app.get('/summary', response_model=SummaryOut)
@@ -324,11 +446,13 @@ def summary(
     invoice_sum_stmt = apply_date_filter_to_datetime(invoice_sum_stmt, Invoice.paperless_created, date_range)
     manual_sum_stmt = select(func.coalesce(func.sum(ManualCost.amount), 0))
     manual_sum_stmt = apply_date_filter_to_date(manual_sum_stmt, ManualCost.date, date_range)
+    manual_sum_stmt = manual_sum_stmt.where(ManualCost.is_archived.is_(False))
 
     invoice_count_stmt = select(func.count()).select_from(Invoice)
     invoice_count_stmt = apply_date_filter_to_datetime(invoice_count_stmt, Invoice.paperless_created, date_range)
     manual_count_stmt = select(func.count()).select_from(ManualCost)
     manual_count_stmt = apply_date_filter_to_date(manual_count_stmt, ManualCost.date, date_range)
+    manual_count_stmt = manual_count_stmt.where(ManualCost.is_archived.is_(False))
     needs_review_stmt = select(func.count()).select_from(Invoice).where(Invoice.needs_review.is_(True))
     needs_review_stmt = apply_date_filter_to_datetime(needs_review_stmt, Invoice.paperless_created, date_range)
 
@@ -351,6 +475,7 @@ def summary(
 
     category_stmt = (
         select(ManualCost.category, func.coalesce(func.sum(ManualCost.amount), 0).label('amount'))
+        .where(ManualCost.is_archived.is_(False))
         .group_by(ManualCost.category)
         .order_by(func.sum(ManualCost.amount).desc())
     )
@@ -378,41 +503,111 @@ def export_csv(
     range_key: str = Query(default='month', alias='range'),
     from_value: Optional[str] = Query(default=None, alias='from'),
     to_value: Optional[str] = Query(default=None, alias='to'),
+    search: Optional[str] = Query(default=None),
+    needs_review: str = Query(default='all'),
+    source: str = Query(default='all'),
+    sort: str = Query(default='date_desc'),
+    archived: str = Query(default='active'),
     db: Session = Depends(get_db),
 ):
+    settings = get_settings()
     date_range = _resolve_requested_date_range(range_key, from_value, to_value)
-    union_query = all_costs_union_query(date_range).subquery('all_costs')
-    rows = db.execute(select(union_query)).mappings().all()
+    source_filter = _normalize_source_filter(source)
+    archived_filter = _normalize_archived_filter(archived)
+    needs_review_filter = _normalize_export_needs_review(needs_review)
+    sort_key = _normalize_sort(sort)
+
+    rows: list[dict[str, object | None]] = []
+
+    if source_filter in {'all', 'paperless'}:
+        invoice_rows = db.scalars(
+            _build_invoice_stmt(date_range, search=search, needs_review=needs_review_filter, sort=sort_key)
+        ).all()
+        for invoice in invoice_rows:
+            rows.append(
+                {
+                    'date': invoice.paperless_created.date().isoformat() if invoice.paperless_created else '',
+                    'source': 'paperless',
+                    'company': invoice.vendor or '',
+                    'title': invoice.title or '',
+                    'amount_gross': float(invoice.amount) if invoice.amount is not None else '',
+                    'currency': invoice.currency or '',
+                    'needs_review': invoice.needs_review,
+                    'confidence': invoice.confidence,
+                    'project_name': settings.PROJECT_NAME,
+                    'project_tag': settings.PROJECT_TAG_NAME,
+                    'paperless_doc_id': invoice.paperless_doc_id,
+                    'paperless_url': _paperless_document_url(settings, invoice.paperless_doc_id),
+                    'notes': '',
+                    '_sort_date': invoice.paperless_created or datetime.min,
+                    '_sort_amount': float(invoice.amount) if invoice.amount is not None else 0.0,
+                }
+            )
+
+    if source_filter in {'all', 'manual'} and needs_review_filter is None:
+        manual_rows = db.scalars(
+            _build_manual_stmt(date_range, archived=archived_filter, search=search, sort=sort_key)
+        ).all()
+        for item in manual_rows:
+            rows.append(
+                {
+                    'date': item.date.isoformat(),
+                    'source': 'manual',
+                    'company': item.vendor,
+                    'title': '',
+                    'amount_gross': float(item.amount),
+                    'currency': item.currency,
+                    'needs_review': '',
+                    'confidence': '',
+                    'project_name': settings.PROJECT_NAME,
+                    'project_tag': settings.PROJECT_TAG_NAME,
+                    'paperless_doc_id': '',
+                    'paperless_url': '',
+                    'notes': item.note or '',
+                    '_sort_date': datetime.combine(item.date, datetime.min.time()),
+                    '_sort_amount': float(item.amount),
+                }
+            )
+
+    reverse = sort_key in {'date_desc', 'amount_desc'}
+    if sort_key.startswith('amount'):
+        rows.sort(key=lambda row: (float(row['_sort_amount'] or 0), str(row['date'] or '')), reverse=reverse)
+    else:
+        rows.sort(key=lambda row: (row['_sort_date'] or datetime.min, str(row['company'] or '')), reverse=reverse)
 
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([
         'date',
         'source',
-        'vendor',
-        'amount',
-        'currency',
+        'company',
         'title',
-        'category',
-        'note',
-        'paperless_doc_id',
-        'confidence',
+        'amount_gross',
+        'currency',
         'needs_review',
+        'confidence',
+        'project_name',
+        'project_tag',
+        'paperless_doc_id',
+        'paperless_url',
+        'notes',
     ])
 
     for row in rows:
         writer.writerow([
             row['date'] or '',
             row['source'] or '',
-            row['vendor'] or '',
-            float(row['amount']) if row['amount'] is not None else '',
-            row['currency'] or '',
+            row['company'] or '',
             row['title'] or '',
-            row['category'] or '',
-            row['note'] or '',
-            row['paperless_doc_id'] if row['paperless_doc_id'] is not None else '',
-            row['confidence'] if row['confidence'] is not None else '',
+            row['amount_gross'] if row['amount_gross'] != '' else '',
+            row['currency'] or '',
             row['needs_review'] if row['needs_review'] is not None else '',
+            row['confidence'] if row['confidence'] is not None else '',
+            row['project_name'] or '',
+            row['project_tag'] or '',
+            row['paperless_doc_id'] if row['paperless_doc_id'] is not None else '',
+            row['paperless_url'] or '',
+            row['notes'] or '',
         ])
 
     output.seek(0)

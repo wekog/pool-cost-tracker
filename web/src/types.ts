@@ -1,5 +1,6 @@
 export type PageKey = 'dashboard' | 'invoices' | 'manual' | 'export'
 export type RangeKey = 'month' | 'last_month' | 'year' | 'all' | 'custom'
+export type ManualArchiveView = 'active' | 'archived' | 'all'
 
 export interface HealthResponse {
   status: string
@@ -73,6 +74,8 @@ export interface ManualCost {
   currency: string
   category: string | null
   note: string | null
+  is_archived: boolean
+  archived_at: string | null
   created_at: string
   updated_at: string
 }
@@ -102,4 +105,6 @@ export interface SyncResponse {
   errors: SyncError
 }
 
-export interface SyncRunResponse extends SyncResponse {}
+export interface SyncRunResponse extends SyncResponse {
+  id?: number
+}

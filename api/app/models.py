@@ -48,6 +48,8 @@ class ManualCost(Base):
     currency: Mapped[str] = mapped_column(String(8), default='EUR', nullable=False)
     category: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

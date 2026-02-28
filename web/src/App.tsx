@@ -7,6 +7,7 @@ import type {
   HealthResponse,
   Invoice,
   InvoiceUpdatePayload,
+  ManualArchiveView,
   ManualCost,
   ManualCostPayload,
   PageKey,
@@ -101,6 +102,22 @@ function buildRangeParams(activeRange: ActiveRange): Record<string, string> {
   return params
 }
 
+function buildInvoiceFilterParams(filters: InvoiceFilters): Record<string, string> {
+  const params: Record<string, string> = { sort: filters.sort }
+  if (filters.needsReview === 'only') {
+    params.needs_review = 'true'
+  }
+  if (filters.search.trim()) {
+    params.search = filters.search.trim()
+  }
+  return params
+}
+
+function buildExportHref(params: Record<string, string>): string {
+  const searchParams = new URLSearchParams(params)
+  return `/api/export.csv?${searchParams.toString()}`
+}
+
 function App() {
   const [activePage, setActivePage] = useState<PageKey>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -109,6 +126,7 @@ function App() {
   const [config, setConfig] = useState<ConfigResponse | null>(null)
   const [summary, setSummary] = useState<SummaryResponse | null>(null)
   const [lastSync, setLastSync] = useState<SyncRunResponse | null>(null)
+  const [syncRuns, setSyncRuns] = useState<SyncRunResponse[]>([])
   const [syncing, setSyncing] = useState(false)
   const [rangeDraft, setRangeDraft] = useState<ActiveRange>({
     range: 'month',
@@ -138,6 +156,7 @@ function App() {
 
   const [manualLoading, setManualLoading] = useState(false)
   const [manualCosts, setManualCosts] = useState<ManualCost[]>([])
+  const [manualArchiveView, setManualArchiveView] = useState<ManualArchiveView>('active')
   const [manualSaving, setManualSaving] = useState(false)
   const [manualDeleting, setManualDeleting] = useState<number | null>(null)
   const [manualEditor, setManualEditor] = useState<ManualCost | null>(null)
@@ -194,9 +213,9 @@ function App() {
       void loadInvoices(invoiceFilters, activeRange)
     }
     if (activePage === 'manual') {
-      void loadManualCosts(activeRange)
+      void loadManualCosts(activeRange, manualArchiveView)
     }
-  }, [activePage, invoiceFilters, activeRange])
+  }, [activePage, invoiceFilters, activeRange, manualArchiveView])
 
   useEffect(() => {
     void loadSummary(activeRange)
@@ -211,14 +230,16 @@ function App() {
 
   async function initialize() {
     try {
-      const [healthRes, configRes, lastSyncRes] = await Promise.all([
+      const [healthRes, configRes, lastSyncRes, syncRunsRes] = await Promise.all([
         api.get<HealthResponse>('/health'),
         api.get<ConfigResponse>('/config'),
         api.get<SyncRunResponse | null>('/sync/last'),
+        api.get<SyncRunResponse[]>('/sync/runs', { params: { limit: '10' } }),
       ])
       setHealth(healthRes.data)
       setConfig(configRes.data)
       setLastSync(lastSyncRes.data)
+      setSyncRuns(syncRunsRes.data)
     } catch (error) {
       showNotice('error', extractApiError(error))
     }
@@ -255,15 +276,29 @@ function App() {
     }
   }
 
-  async function loadManualCosts(range: ActiveRange) {
+  async function loadManualCosts(range: ActiveRange, archiveView: ManualArchiveView) {
     setManualLoading(true)
     try {
-      const response = await api.get<ManualCost[]>('/manual-costs', { params: buildRangeParams(range) })
+      const response = await api.get<ManualCost[]>('/manual-costs', {
+        params: {
+          ...buildRangeParams(range),
+          archived: archiveView,
+        },
+      })
       setManualCosts(response.data)
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
       setManualLoading(false)
+    }
+  }
+
+  async function loadSyncRuns() {
+    try {
+      const response = await api.get<SyncRunResponse[]>('/sync/runs', { params: { limit: '10' } })
+      setSyncRuns(response.data)
+    } catch (error) {
+      showNotice('error', extractApiError(error))
     }
   }
 
@@ -284,7 +319,8 @@ function App() {
         api.get<HealthResponse>('/health'),
         loadSummary(activeRange),
         activePage === 'invoices' ? loadInvoices(invoiceFilters, activeRange) : Promise.resolve(),
-        activePage === 'manual' ? loadManualCosts(activeRange) : Promise.resolve(),
+        activePage === 'manual' ? loadManualCosts(activeRange, manualArchiveView) : Promise.resolve(),
+        loadSyncRuns(),
       ])
       setHealth(healthRes.data)
     } catch (error) {
@@ -370,7 +406,7 @@ function App() {
         category: '',
         note: '',
       })
-      await Promise.all([loadManualCosts(activeRange), loadSummary(activeRange)])
+      await Promise.all([loadManualCosts(activeRange, manualArchiveView), loadSummary(activeRange)])
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -405,7 +441,7 @@ function App() {
       } satisfies ManualCostPayload)
       showNotice('success', 'Eintrag aktualisiert.')
       setManualEditor(null)
-      await Promise.all([loadManualCosts(activeRange), loadSummary(activeRange)])
+      await Promise.all([loadManualCosts(activeRange, manualArchiveView), loadSummary(activeRange)])
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -413,12 +449,25 @@ function App() {
     }
   }
 
-  async function handleManualDelete(itemId: number) {
+  async function handleManualArchive(itemId: number) {
     setManualDeleting(itemId)
     try {
-      await api.delete(`/manual-costs/${itemId}`)
-      showNotice('success', 'Eintrag gelöscht.')
-      await Promise.all([loadManualCosts(activeRange), loadSummary(activeRange)])
+      await api.patch(`/manual-costs/${itemId}/archive`)
+      showNotice('success', 'Archiviert. Zum Rückgängig machen den Filter "Archiv anzeigen" aktivieren.')
+      await Promise.all([loadManualCosts(activeRange, manualArchiveView), loadSummary(activeRange)])
+    } catch (error) {
+      showNotice('error', extractApiError(error))
+    } finally {
+      setManualDeleting(null)
+    }
+  }
+
+  async function handleManualRestore(itemId: number) {
+    setManualDeleting(itemId)
+    try {
+      await api.patch(`/manual-costs/${itemId}/restore`)
+      showNotice('success', 'Eintrag wiederhergestellt.')
+      await Promise.all([loadManualCosts(activeRange, manualArchiveView), loadSummary(activeRange)])
     } catch (error) {
       showNotice('error', extractApiError(error))
     } finally {
@@ -451,10 +500,28 @@ function App() {
   const projectTagName = config?.project_tag_name?.trim() || config?.pool_tag_name?.trim() || 'Pool'
   const schedulerStatus = config?.scheduler_enabled ? 'aktiv' : 'inaktiv'
   const paperlessStatus = health?.paperless_ok ? '🟢 erreichbar' : '🔴 prüfen'
-  const exportHref = useMemo(() => {
-    const params = new URLSearchParams(buildRangeParams(activeRange))
-    return `/api/export.csv?${params.toString()}`
-  }, [activeRange])
+  const exportBaseParams = useMemo(() => {
+    const invoiceParams = buildInvoiceFilterParams(invoiceFilters)
+    return {
+      ...buildRangeParams(activeRange),
+      ...invoiceParams,
+      archived: manualArchiveView,
+    }
+  }, [activeRange, invoiceFilters, manualArchiveView])
+  const exportCurrentHref = useMemo(() => buildExportHref(exportBaseParams), [exportBaseParams])
+  const exportNeedsReviewHref = useMemo(
+    () => buildExportHref({ ...exportBaseParams, needs_review: 'true' }),
+    [exportBaseParams],
+  )
+  const exportManualHref = useMemo(
+    () =>
+      buildExportHref({
+        ...exportBaseParams,
+        source: 'manual',
+        needs_review: 'all',
+      }),
+    [exportBaseParams],
+  )
 
   return (
     <div className="app-shell">
@@ -608,6 +675,50 @@ function App() {
                 </div>
               </section>
             </div>
+
+            <section className="panel">
+              <div className="section-header">
+                <div>
+                  <h2>Letzte Syncs</h2>
+                  <div className="muted-text">Die letzten 10 Synchronisationsläufe</div>
+                </div>
+              </div>
+              <div className="table-wrap">
+                <table className="data-table sync-table">
+                  <thead>
+                    <tr>
+                      <th>Zeit</th>
+                      <th>Dauer</th>
+                      <th>Geprüft</th>
+                      <th>Neu</th>
+                      <th>Aktualisiert</th>
+                      <th>Fehler</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {syncRuns.map((run) => (
+                      <tr
+                        key={run.id ?? run.finished_at}
+                        className={run.errors.first_error ? 'clickable-row' : ''}
+                        onClick={() => {
+                          if (run.errors.first_error) {
+                            showNotice('info', run.errors.first_error)
+                          }
+                        }}
+                      >
+                        <td className="cell-nowrap">{formatDateTime(run.finished_at)}</td>
+                        <td className="cell-nowrap">{formatDuration(run.duration_ms)}</td>
+                        <td className="cell-nowrap">{run.checked_docs}</td>
+                        <td className="cell-nowrap">{run.new_invoices}</td>
+                        <td className="cell-nowrap">{run.updated_invoices}</td>
+                        <td className="cell-nowrap">{run.errors.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {syncRuns.length === 0 && <div className="empty-state">Noch keine Sync-Läufe vorhanden.</div>}
+              </div>
+            </section>
           </section>
         )}
 
@@ -786,6 +897,14 @@ function App() {
                   <h2>Manuelle Kosten</h2>
                   <div className="muted-text">{manualLoading ? 'Lädt…' : `${manualCosts.length} Einträge`}</div>
                 </div>
+                <label className="toggle-inline">
+                  <input
+                    type="checkbox"
+                    checked={manualArchiveView === 'all'}
+                    onChange={(event) => setManualArchiveView(event.target.checked ? 'all' : 'active')}
+                  />
+                  <span>Archiv anzeigen</span>
+                </label>
               </div>
               <div className="table-wrap">
                 <table className="data-table manual-table">
@@ -796,6 +915,7 @@ function App() {
                       <th>Betrag</th>
                       <th>Kategorie</th>
                       <th>Notiz</th>
+                      <th>Archiviert</th>
                       <th></th>
                     </tr>
                   </thead>
@@ -807,6 +927,7 @@ function App() {
                         <td className="cell-nowrap">{formatCurrency(item.amount)}</td>
                         <td className="cell-nowrap">{item.category ?? '–'}</td>
                         <td className="cell-truncate">{item.note ?? '–'}</td>
+                        <td className="cell-nowrap">{item.is_archived ? 'Ja' : 'Nein'}</td>
                         <td>
                           <div className="table-actions">
                             <button className="table-button" onClick={() => setManualEditor(item)}>
@@ -814,10 +935,10 @@ function App() {
                             </button>
                             <button
                               className="table-button danger"
-                              onClick={() => void handleManualDelete(item.id)}
+                              onClick={() => void (item.is_archived ? handleManualRestore(item.id) : handleManualArchive(item.id))}
                               disabled={manualDeleting === item.id}
                             >
-                              {manualDeleting === item.id ? 'Löscht…' : 'Löschen'}
+                              {manualDeleting === item.id ? 'Speichert…' : item.is_archived ? 'Wiederherstellen' : 'Archivieren'}
                             </button>
                           </div>
                         </td>
@@ -835,10 +956,16 @@ function App() {
           <section className="page-stack">
             <section className="panel">
               <h2>Export</h2>
-              <p className="muted-text">CSV wird direkt über die API ausgeliefert. Der Download läuft im gleichen Origin über den UI-Proxy.</p>
+              <p className="muted-text">CSV verwendet den aktuellen Zeitraum und die aktiven Filter. Downloads laufen direkt ueber den UI-Proxy.</p>
               <div className="actions-row">
-                <a className="primary-button link-button" href={exportHref} target="_blank" rel="noreferrer">
-                  CSV herunterladen
+                <a className="primary-button link-button" href={exportCurrentHref} target="_blank" rel="noreferrer">
+                  CSV exportieren (aktueller Filter)
+                </a>
+                <a className="secondary-button link-button" href={exportNeedsReviewHref} target="_blank" rel="noreferrer">
+                  CSV exportieren: nur Needs Review
+                </a>
+                <a className="secondary-button link-button" href={exportManualHref} target="_blank" rel="noreferrer">
+                  CSV exportieren: nur Manuell
                 </a>
               </div>
             </section>

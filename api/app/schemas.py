@@ -65,6 +65,8 @@ class ManualCostOut(BaseModel):
     currency: str
     category: Optional[str] = None
     note: Optional[str] = None
+    is_archived: bool
+    archived_at: Optional[datetime.datetime] = None
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -125,6 +127,7 @@ class HealthOut(BaseModel):
 
 
 class SyncRunOut(BaseModel):
+    id: Optional[int] = None
     started_at: datetime.datetime
     finished_at: datetime.datetime
     duration_ms: int
@@ -139,12 +142,18 @@ class AllCostRow(BaseModel):
     date: Optional[str]
     source: str
     vendor: Optional[str]
+    company: Optional[str] = None
     amount: Optional[float]
+    amount_gross: Optional[float] = None
     currency: Optional[str]
     title: Optional[str]
     category: Optional[str]
     note: Optional[str]
+    notes: Optional[str] = None
+    project_name: Optional[str] = None
+    project_tag: Optional[str] = None
     paperless_doc_id: Optional[int]
+    paperless_url: Optional[str] = None
     confidence: Optional[float]
     needs_review: Optional[bool]
 

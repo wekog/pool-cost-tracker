@@ -131,6 +131,7 @@ async def sync_invoices(db: Session, settings: Settings) -> SyncResponse:
 
 def sync_run_to_out(sync_run: SyncRun) -> SyncRunOut:
     return SyncRunOut(
+        id=sync_run.id,
         started_at=sync_run.started_at,
         finished_at=sync_run.finished_at,
         duration_ms=sync_run.duration_ms,

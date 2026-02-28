@@ -143,7 +143,7 @@ def test_custom_range_filters_export(monkeypatch):
     rows = list(csv.DictReader(payload.splitlines()))
 
     assert len(rows) == 1
-    assert rows[0]['vendor'] == 'Jan AG'
+    assert rows[0]['company'] == 'Jan AG'
 
 
 def test_update_invoice_can_reset_fields_to_auto():
