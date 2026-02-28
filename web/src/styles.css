@@ -30,6 +30,7 @@ textarea {
 
 button {
   cursor: pointer;
+  min-height: 44px;
 }
 
 a {
@@ -45,6 +46,7 @@ a {
   display: grid;
   grid-template-columns: 260px 1fr;
   min-height: 100vh;
+  position: relative;
 }
 
 .sidebar {
@@ -54,6 +56,15 @@ a {
   display: flex;
   flex-direction: column;
   gap: 28px;
+}
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  border: none;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
 }
 
 .sidebar-title,
@@ -81,6 +92,7 @@ a {
   border-radius: 14px;
   padding: 12px 14px;
   text-align: left;
+  min-height: 44px;
 }
 
 .nav-button.active {
@@ -120,11 +132,47 @@ a {
 }
 
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
   padding: 18px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  background: linear-gradient(180deg, rgba(18, 20, 26, 0.98), rgba(18, 20, 26, 0.94));
+}
+
+.topbar-main {
+  display: grid;
+  gap: 4px;
+}
+
+.topbar-subtitle {
+  word-break: break-word;
+}
+
+.menu-button {
+  display: none;
+  width: 44px;
+  min-width: 44px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.menu-button span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
 }
 
 .topbar-actions,
@@ -141,6 +189,7 @@ a {
 .notice-close,
 .link-button {
   border-radius: 12px;
+  min-height: 44px;
   padding: 10px 14px;
   border: none;
 }
@@ -321,6 +370,7 @@ input,
 select,
 textarea {
   width: 100%;
+  min-height: 44px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(17, 20, 26, 0.95);
@@ -342,12 +392,29 @@ textarea:focus {
 
 .table-wrap {
   overflow-x: auto;
+  margin-left: -18px;
+  margin-right: -18px;
+  padding-left: 18px;
+  padding-right: 18px;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.92rem;
+}
+
+.data-table {
+  width: 100%;
+}
+
+.invoices-table {
+  min-width: 900px;
+}
+
+.manual-table {
+  min-width: 900px;
 }
 
 th,
@@ -361,6 +428,18 @@ td {
 thead th {
   color: rgba(255, 255, 255, 0.62);
   font-weight: 500;
+  white-space: nowrap;
+}
+
+.cell-nowrap {
+  white-space: nowrap;
+}
+
+.cell-truncate {
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .empty-state {
@@ -385,10 +464,13 @@ thead th {
   display: flex !important;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
 }
 
 .checkbox-row input {
   width: auto;
+  min-height: 20px;
+  min-width: 20px;
 }
 
 @media (max-width: 1080px) {
@@ -397,8 +479,24 @@ thead th {
   }
 
   .sidebar {
-    border-right: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(288px, calc(100vw - 32px));
+    max-width: 100%;
+    z-index: 50;
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom: none;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    display: block;
   }
 
   .nav-list {
@@ -422,6 +520,10 @@ thead th {
     flex-direction: column;
   }
 
+  .menu-button {
+    display: inline-flex;
+  }
+
   .form-grid {
     grid-template-columns: 1fr;
   }
@@ -430,5 +532,13 @@ thead th {
   .topbar-actions,
   .actions-row {
     flex-wrap: wrap;
+  }
+}
+
+@media (min-width: 1081px) {
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
   }
 }

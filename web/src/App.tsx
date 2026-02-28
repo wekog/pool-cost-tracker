@@ -66,6 +66,7 @@ function formatDateOnly(value: string | null | undefined): string {
 
 function App() {
   const [activePage, setActivePage] = useState<PageKey>('dashboard')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [config, setConfig] = useState<ConfigResponse | null>(null)
@@ -148,6 +149,13 @@ function App() {
       note: manualEditor.note ?? '',
     })
   }, [manualEditor])
+
+  useEffect(() => {
+    document.body.style.overflow = sidebarOpen ? 'hidden' : ''
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [sidebarOpen])
 
   async function initialize() {
     try {
@@ -338,6 +346,11 @@ function App() {
     setNotice({ type, message })
   }
 
+  function handlePageChange(page: PageKey) {
+    setActivePage(page)
+    setSidebarOpen(false)
+  }
+
   const topVendors = useMemo(() => summary?.top_vendors ?? [], [summary])
   const topCategories = useMemo(() => summary?.costs_by_category ?? [], [summary])
   const maxVendorAmount = Math.max(...topVendors.map((item) => item.amount), 1)
@@ -348,23 +361,25 @@ function App() {
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      {sidebarOpen && <button className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} aria-label="Navigation schließen" />}
+
+      <aside className={`sidebar ${sidebarOpen ? 'mobile-open' : ''}`}>
         <div>
           <div className="sidebar-title">{projectName}</div>
           <div className="sidebar-subtitle">Kostenübersicht</div>
         </div>
 
         <nav className="nav-list">
-          <button className={navClass(activePage, 'dashboard')} onClick={() => setActivePage('dashboard')}>
+          <button className={navClass(activePage, 'dashboard')} onClick={() => handlePageChange('dashboard')}>
             Dashboard
           </button>
-          <button className={navClass(activePage, 'invoices')} onClick={() => setActivePage('invoices')}>
+          <button className={navClass(activePage, 'invoices')} onClick={() => handlePageChange('invoices')}>
             Paperless-Rechnungen
           </button>
-          <button className={navClass(activePage, 'manual')} onClick={() => setActivePage('manual')}>
+          <button className={navClass(activePage, 'manual')} onClick={() => handlePageChange('manual')}>
             Manuelle Kosten
           </button>
-          <button className={navClass(activePage, 'export')} onClick={() => setActivePage('export')}>
+          <button className={navClass(activePage, 'export')} onClick={() => handlePageChange('export')}>
             Export
           </button>
         </nav>
@@ -377,9 +392,14 @@ function App() {
 
       <main className="main-shell">
         <header className="topbar panel">
-          <div>
+          <div className="topbar-main">
+            <button className="menu-button" onClick={() => setSidebarOpen(true)} aria-label="Navigation öffnen">
+              <span />
+              <span />
+              <span />
+            </button>
             <div className="topbar-title">{projectName}</div>
-            <div className="muted-text">
+            <div className="muted-text topbar-subtitle">
               Kostenübersicht | Paperless: {config?.paperless_base_url ?? 'lädt...'} | Scheduler: {schedulerStatus}
               {config ? ` (${config.scheduler_interval_minutes} min)` : ''} | Tag: {projectTagName}
             </div>
@@ -507,7 +527,7 @@ function App() {
                 </div>
               </div>
               <div className="table-wrap">
-                <table>
+                <table className="data-table invoices-table">
                   <thead>
                     <tr>
                       <th>Datum</th>
@@ -523,13 +543,13 @@ function App() {
                   <tbody>
                     {invoices.map((invoice) => (
                       <tr key={invoice.id}>
-                        <td>{formatDateTime(invoice.paperless_created)}</td>
-                        <td>{invoice.vendor ?? '–'}</td>
-                        <td>{formatCurrency(invoice.amount)}</td>
-                        <td>{invoice.title ?? '–'}</td>
-                        <td>{Math.round(invoice.confidence * 100)}%</td>
-                        <td>{invoice.needs_review ? 'Ja' : 'Nein'}</td>
-                        <td>{invoice.paperless_doc_id}</td>
+                        <td className="cell-nowrap">{formatDateTime(invoice.paperless_created)}</td>
+                        <td className="cell-nowrap">{invoice.vendor ?? '–'}</td>
+                        <td className="cell-nowrap">{formatCurrency(invoice.amount)}</td>
+                        <td className="cell-truncate">{invoice.title ?? '–'}</td>
+                        <td className="cell-nowrap">{Math.round(invoice.confidence * 100)}%</td>
+                        <td className="cell-nowrap">{invoice.needs_review ? 'Ja' : 'Nein'}</td>
+                        <td className="cell-nowrap">{invoice.paperless_doc_id}</td>
                         <td>
                           <button className="table-button" onClick={() => setInvoiceEditor(invoice)}>
                             Bearbeiten
@@ -609,7 +629,7 @@ function App() {
                 </div>
               </div>
               <div className="table-wrap">
-                <table>
+                <table className="data-table manual-table">
                   <thead>
                     <tr>
                       <th>Datum</th>
@@ -623,11 +643,11 @@ function App() {
                   <tbody>
                     {manualCosts.map((item) => (
                       <tr key={item.id}>
-                        <td>{formatDateOnly(item.date)}</td>
-                        <td>{item.vendor}</td>
-                        <td>{formatCurrency(item.amount)}</td>
-                        <td>{item.category ?? '–'}</td>
-                        <td>{item.note ?? '–'}</td>
+                        <td className="cell-nowrap">{formatDateOnly(item.date)}</td>
+                        <td className="cell-nowrap">{item.vendor}</td>
+                        <td className="cell-nowrap">{formatCurrency(item.amount)}</td>
+                        <td className="cell-nowrap">{item.category ?? '–'}</td>
+                        <td className="cell-truncate">{item.note ?? '–'}</td>
                         <td>
                           <div className="table-actions">
                             <button className="table-button" onClick={() => setManualEditor(item)}>
