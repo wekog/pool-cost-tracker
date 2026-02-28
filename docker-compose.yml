@@ -27,4 +27,4 @@ services:
     depends_on:
       - api
     ports:
-      - "8502:8501"
+      - "8501:8501"

@@ -63,7 +63,7 @@ UI:
 
 - Keine zusätzlichen UI-ENV nötig. Die React-App spricht relativ über `/api` und wird im gleichen Container-Proxy auf `http://api:8000` weitergeleitet.
 
-Details: `/Users/weko/Documents/Codex/Pool_Kosten/docs/portainer-env.md`
+Details: Siehe `docs/portainer-env.md`
 
 ## Start mit Docker Compose
 
@@ -73,7 +73,7 @@ docker compose up --build
 
 ## Aufruf
 
-- UI: `http://<host>:8502`
+- UI: `http://<host>:8501`
 - API (externes Mapping): `http://<host>:18000/docs`
 
 ## Scheduler
@@ -102,7 +102,7 @@ docker compose exec api alembic upgrade head
 
 ## Frontend
 
-- Die produktive UI liegt unter `/Users/weko/Documents/Codex/Pool_Kosten/web`
+- Die produktive UI liegt im Ordner `web`
 - `web/nginx/default.conf` servt die SPA und proxyt `/api/*` intern auf `api:8000`
 - Docker Compose startet nur noch den React+Nginx-Container als `ui`
 
