@@ -19,7 +19,7 @@ from .database import Base, SessionLocal, engine, ensure_schema_compatibility, g
 from .models import Invoice, ManualCost, SyncRun
 from .paperless import PaperlessClient
 from .scheduler import SyncScheduler
-from .schemas import ConfigOut, HealthOut, InvoiceOut, InvoiceUpdate, ManualCostCreate, ManualCostOut, ManualCostUpdate, SummaryOut, SyncResponse, SyncRunOut
+from .schemas import ConfigOut, HealthOut, InvoiceOut, InvoiceReviewListOut, InvoiceUpdate, ManualCostCreate, ManualCostOut, ManualCostUpdate, SummaryOut, SyncResponse, SyncRunOut
 from .settings import Settings, get_settings
 from .sync_service import sync_invoices, sync_run_to_out
 
@@ -140,6 +140,13 @@ def _normalize_sort(value: str = 'date_desc') -> str:
     normalized = value.strip().lower() if isinstance(value, str) else 'date_desc'
     if normalized not in {'date_desc', 'date_asc', 'amount_desc', 'amount_asc'}:
         raise HTTPException(status_code=422, detail="Ungültiger sort-Wert. Erlaubt: date_desc, date_asc, amount_desc, amount_asc.")
+    return normalized
+
+
+def _normalize_review_sort(value: str = 'amount_desc') -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else 'amount_desc'
+    if normalized not in {'amount_desc', 'date_desc'}:
+        raise HTTPException(status_code=422, detail="Ungültiger review-sort-Wert. Erlaubt: amount_desc, date_desc.")
     return normalized
 
 
@@ -322,6 +329,21 @@ def get_invoices(
     return [_invoice_to_out(r) for r in rows]
 
 
+@app.get('/invoices/review', response_model=InvoiceReviewListOut)
+def review_invoices(
+    sort: str = Query(default='amount_desc'),
+    range_key: str = Query(default='month', alias='range'),
+    from_value: Optional[str] = Query(default=None, alias='from'),
+    to_value: Optional[str] = Query(default=None, alias='to'),
+    db: Session = Depends(get_db),
+):
+    date_range = _resolve_requested_date_range(range_key, from_value, to_value)
+    review_sort = _normalize_review_sort(sort)
+    rows = db.scalars(_build_invoice_stmt(date_range, needs_review=True, sort=review_sort)).all()
+    items = [_invoice_to_out(row) for row in rows]
+    return InvoiceReviewListOut(total=len(items), items=items)
+
+
 @app.put('/invoices/{invoice_id}', response_model=InvoiceOut)
 def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depends(get_db)):
     invoice = db.get(Invoice, invoice_id)
@@ -358,6 +380,17 @@ def update_invoice(invoice_id: int, payload: InvoiceUpdate, db: Session = Depend
         elif invoice.vendor_source == 'auto' and invoice.amount_source == 'auto':
             invoice.needs_review = True
 
+    db.commit()
+    db.refresh(invoice)
+    return _invoice_to_out(invoice)
+
+
+@app.patch('/invoices/{invoice_id}/resolve', response_model=InvoiceOut)
+def resolve_invoice_review(invoice_id: int, db: Session = Depends(get_db)):
+    invoice = db.get(Invoice, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail='Invoice not found')
+    invoice.needs_review = False
     db.commit()
     db.refresh(invoice)
     return _invoice_to_out(invoice)

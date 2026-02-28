@@ -1,6 +1,7 @@
-export type PageKey = 'dashboard' | 'invoices' | 'manual' | 'export'
+export type PageKey = 'dashboard' | 'inbox' | 'invoices' | 'manual' | 'export'
 export type RangeKey = 'month' | 'last_month' | 'year' | 'all' | 'custom'
 export type ManualArchiveView = 'active' | 'archived' | 'all'
+export type ReviewSort = 'amount_desc' | 'date_desc'
 
 export interface HealthResponse {
   status: string
@@ -63,6 +64,11 @@ export interface InvoiceUpdatePayload {
   needs_review?: boolean
   reset_vendor?: boolean
   reset_amount?: boolean
+}
+
+export interface InvoiceReviewResponse {
+  total: number
+  items: Invoice[]
 }
 
 export interface ManualCost {

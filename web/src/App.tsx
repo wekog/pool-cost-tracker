@@ -6,12 +6,14 @@ import type {
   ConfigResponse,
   HealthResponse,
   Invoice,
+  InvoiceReviewResponse,
   InvoiceUpdatePayload,
   ManualArchiveView,
   ManualCost,
   ManualCostPayload,
   PageKey,
   RangeKey,
+  ReviewSort,
   SummaryResponse,
   SyncResponse,
   SyncRunResponse,
@@ -118,6 +120,14 @@ function buildExportHref(params: Record<string, string>): string {
   return `/api/export.csv?${searchParams.toString()}`
 }
 
+function buildPaperlessDocumentHref(baseUrl: string | null | undefined, docId: number): string {
+  const normalizedBaseUrl = baseUrl?.trim()
+  if (!normalizedBaseUrl) {
+    return ''
+  }
+  return `${normalizedBaseUrl.replace(/\/$/, '')}/documents/${docId}/details/`
+}
+
 function App() {
   const [activePage, setActivePage] = useState<PageKey>('dashboard')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -151,6 +161,11 @@ function App() {
   })
   const [invoiceLoading, setInvoiceLoading] = useState(false)
   const [invoices, setInvoices] = useState<Invoice[]>([])
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewSaving, setReviewSaving] = useState(false)
+  const [reviewItems, setReviewItems] = useState<Invoice[]>([])
+  const [reviewCursor, setReviewCursor] = useState(0)
+  const [reviewSort, setReviewSort] = useState<ReviewSort>('amount_desc')
   const [invoiceEditor, setInvoiceEditor] = useState<Invoice | null>(null)
   const [invoiceSaving, setInvoiceSaving] = useState(false)
 
@@ -177,6 +192,13 @@ function App() {
     vendor: '',
     amount: '',
     needsReview: false,
+  })
+  const [reviewForm, setReviewForm] = useState<{
+    vendor: string
+    amount: string
+  }>({
+    vendor: '',
+    amount: '',
   })
 
   useEffect(() => {
@@ -208,14 +230,33 @@ function App() {
     })
   }, [manualEditor])
 
+  const currentReview = reviewItems[reviewCursor] ?? null
+
   useEffect(() => {
+    if (!currentReview) {
+      setReviewForm({ vendor: '', amount: '' })
+      return
+    }
+    setReviewForm({
+      vendor: currentReview.vendor ?? '',
+      amount:
+        currentReview.amount !== null && currentReview.amount !== undefined
+          ? String(currentReview.amount)
+          : '',
+    })
+  }, [currentReview])
+
+  useEffect(() => {
+    if (activePage === 'inbox') {
+      void loadReviewInbox(activeRange, reviewSort)
+    }
     if (activePage === 'invoices') {
       void loadInvoices(invoiceFilters, activeRange)
     }
     if (activePage === 'manual') {
       void loadManualCosts(activeRange, manualArchiveView)
     }
-  }, [activePage, invoiceFilters, activeRange, manualArchiveView])
+  }, [activePage, activeRange, reviewSort, invoiceFilters, manualArchiveView])
 
   useEffect(() => {
     void loadSummary(activeRange)
@@ -227,6 +268,43 @@ function App() {
       document.body.style.overflow = ''
     }
   }, [sidebarOpen])
+
+  useEffect(() => {
+    if (activePage !== 'inbox' || !currentReview) {
+      return
+    }
+
+    function handleInboxKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      const tagName = target?.tagName ?? ''
+      const isEditable = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
+
+      if (event.key === 'Enter' && tagName !== 'TEXTAREA') {
+        event.preventDefault()
+        void handleReviewSaveAndNext()
+        return
+      }
+
+      if (isEditable) {
+        return
+      }
+
+      if (event.key === 'n' || event.key === 'N') {
+        event.preventDefault()
+        handleReviewNext()
+      }
+
+      if (event.key === 'p' || event.key === 'P') {
+        event.preventDefault()
+        handleReviewPrev()
+      }
+    }
+
+    window.addEventListener('keydown', handleInboxKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleInboxKeyDown)
+    }
+  }, [activePage, currentReview, reviewForm, reviewItems.length])
 
   async function initialize() {
     try {
@@ -273,6 +351,24 @@ function App() {
       showNotice('error', extractApiError(error))
     } finally {
       setInvoiceLoading(false)
+    }
+  }
+
+  async function loadReviewInbox(range: ActiveRange, sort: ReviewSort) {
+    setReviewLoading(true)
+    try {
+      const response = await api.get<InvoiceReviewResponse>('/invoices/review', {
+        params: {
+          ...buildRangeParams(range),
+          sort,
+        },
+      })
+      setReviewItems(response.data.items)
+      setReviewCursor(0)
+    } catch (error) {
+      showNotice('error', extractApiError(error))
+    } finally {
+      setReviewLoading(false)
     }
   }
 
@@ -374,6 +470,93 @@ function App() {
     } finally {
       setInvoiceSaving(false)
     }
+  }
+
+  function removeReviewItemFromState(invoiceId: number, resolvedInvoice: Invoice) {
+    setReviewItems((current) => {
+      const removedIndex = current.findIndex((item) => item.id === invoiceId)
+      if (removedIndex === -1) {
+        return current
+      }
+      const nextItems = current.filter((item) => item.id !== invoiceId)
+      setReviewCursor((currentCursor) => {
+        if (nextItems.length === 0) {
+          return 0
+        }
+        if (currentCursor > removedIndex) {
+          return currentCursor - 1
+        }
+        return Math.min(currentCursor, nextItems.length - 1)
+      })
+      return nextItems
+    })
+    setInvoices((current) => current.map((item) => (item.id === resolvedInvoice.id ? resolvedInvoice : item)))
+    setSummary((current) =>
+      current
+        ? {
+            ...current,
+            needs_review_count: Math.max(0, current.needs_review_count - 1),
+          }
+        : current,
+    )
+  }
+
+  async function handleReviewSaveAndNext() {
+    if (!currentReview) {
+      return
+    }
+
+    const vendorValue = reviewForm.vendor.trim()
+    const amountValue = reviewForm.amount.trim()
+    if (amountValue) {
+      const parsedAmount = Number(amountValue)
+      if (Number.isNaN(parsedAmount) || parsedAmount < 0) {
+        showNotice('error', 'Betrag muss eine gültige Zahl sein.')
+        return
+      }
+    }
+
+    const payload: InvoiceUpdatePayload = {
+      needs_review: false,
+      vendor: vendorValue || null,
+      amount: amountValue ? Number(amountValue) : null,
+    }
+
+    setReviewSaving(true)
+    try {
+      const response = await api.put<Invoice>(`/invoices/${currentReview.id}`, payload)
+      removeReviewItemFromState(currentReview.id, response.data)
+      showNotice('success', 'Rechnung gespeichert und aus der Inbox entfernt.')
+    } catch (error) {
+      showNotice('error', extractApiError(error))
+    } finally {
+      setReviewSaving(false)
+    }
+  }
+
+  async function handleReviewResolve() {
+    if (!currentReview) {
+      return
+    }
+
+    setReviewSaving(true)
+    try {
+      const response = await api.patch<Invoice>(`/invoices/${currentReview.id}/resolve`)
+      removeReviewItemFromState(currentReview.id, response.data)
+      showNotice('success', 'Rechnung als geprüft markiert.')
+    } catch (error) {
+      showNotice('error', extractApiError(error))
+    } finally {
+      setReviewSaving(false)
+    }
+  }
+
+  function handleReviewNext() {
+    setReviewCursor((current) => Math.min(current + 1, Math.max(reviewItems.length - 1, 0)))
+  }
+
+  function handleReviewPrev() {
+    setReviewCursor((current) => Math.max(current - 1, 0))
   }
 
   async function handleManualCreate() {
@@ -537,6 +720,10 @@ function App() {
           <button className={navClass(activePage, 'dashboard')} onClick={() => handlePageChange('dashboard')}>
             Dashboard
           </button>
+          <button className={navClass(activePage, 'inbox')} onClick={() => handlePageChange('inbox')}>
+            <span>Inbox</span>
+            {(summary?.needs_review_count ?? 0) > 0 && <span className="nav-badge">{summary?.needs_review_count}</span>}
+          </button>
           <button className={navClass(activePage, 'invoices')} onClick={() => handlePageChange('invoices')}>
             Paperless-Rechnungen
           </button>
@@ -580,48 +767,50 @@ function App() {
             </div>
           </div>
 
-          <div className="range-toolbar">
-            <label>
-              Zeitraum
-              <select
-                value={rangeDraft.range}
-                onChange={(event) =>
-                  setRangeDraft((current) => ({ ...current, range: event.target.value as RangeKey }))
-                }
-              >
-                <option value="month">Aktueller Monat</option>
-                <option value="last_month">Letzter Monat</option>
-                <option value="year">Aktuelles Jahr</option>
-                <option value="all">Alle</option>
-                <option value="custom">Benutzerdefiniert</option>
-              </select>
-            </label>
-            {rangeDraft.range === 'custom' && (
-              <>
-                <label>
-                  Von
-                  <input
-                    type="date"
-                    value={rangeDraft.from}
-                    onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
-                  />
-                </label>
-                <label>
-                  Bis
-                  <input
-                    type="date"
-                    value={rangeDraft.to}
-                    onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
-                  />
-                </label>
-              </>
-            )}
-            <div className="range-toolbar-action">
-              <button className="secondary-button" onClick={handleRangeApply}>
-                Zeitraum anwenden
-              </button>
+          {activePage !== 'inbox' && (
+            <div className="range-toolbar">
+              <label>
+                Zeitraum
+                <select
+                  value={rangeDraft.range}
+                  onChange={(event) =>
+                    setRangeDraft((current) => ({ ...current, range: event.target.value as RangeKey }))
+                  }
+                >
+                  <option value="month">Aktueller Monat</option>
+                  <option value="last_month">Letzter Monat</option>
+                  <option value="year">Aktuelles Jahr</option>
+                  <option value="all">Alle</option>
+                  <option value="custom">Benutzerdefiniert</option>
+                </select>
+              </label>
+              {rangeDraft.range === 'custom' && (
+                <>
+                  <label>
+                    Von
+                    <input
+                      type="date"
+                      value={rangeDraft.from}
+                      onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
+                    />
+                  </label>
+                  <label>
+                    Bis
+                    <input
+                      type="date"
+                      value={rangeDraft.to}
+                      onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
+                    />
+                  </label>
+                </>
+              )}
+              <div className="range-toolbar-action">
+                <button className="secondary-button" onClick={handleRangeApply}>
+                  Zeitraum anwenden
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </header>
 
         {notice && (
@@ -631,6 +820,204 @@ function App() {
               Schließen
             </button>
           </div>
+        )}
+
+        {activePage === 'inbox' && (
+          <section className="page-stack">
+            <section className="panel">
+              <div className="section-header">
+                <div>
+                  <h2>{reviewItems.length === 0 ? 'Inbox leer 🎉' : `${reviewItems.length} Rechnungen prüfen`}</h2>
+                  <div className="muted-text">
+                    {reviewItems.length === 0
+                      ? 'Für den gewählten Zeitraum gibt es keine offenen Review-Fälle.'
+                      : `${reviewCursor + 1} von ${reviewItems.length}`}
+                  </div>
+                </div>
+              </div>
+              <div className="form-grid form-grid-inbox">
+                <label>
+                  Zeitraum
+                  <select
+                    value={rangeDraft.range}
+                    onChange={(event) =>
+                      setRangeDraft((current) => ({ ...current, range: event.target.value as RangeKey }))
+                    }
+                  >
+                    <option value="month">Aktueller Monat</option>
+                    <option value="last_month">Letzter Monat</option>
+                    <option value="year">Aktuelles Jahr</option>
+                    <option value="all">Alle</option>
+                    <option value="custom">Benutzerdefiniert</option>
+                  </select>
+                </label>
+                {rangeDraft.range === 'custom' && (
+                  <>
+                    <label>
+                      Von
+                      <input
+                        type="date"
+                        value={rangeDraft.from}
+                        onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Bis
+                      <input
+                        type="date"
+                        value={rangeDraft.to}
+                        onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
+                      />
+                    </label>
+                  </>
+                )}
+                <label>
+                  Sortierung
+                  <select
+                    value={reviewSort}
+                    onChange={(event) => setReviewSort(event.target.value as ReviewSort)}
+                  >
+                    <option value="amount_desc">Betrag zuerst</option>
+                    <option value="date_desc">Neueste zuerst</option>
+                  </select>
+                </label>
+                <div className="filter-action">
+                  <button
+                    className="primary-button"
+                    onClick={handleRangeApply}
+                    disabled={reviewLoading || reviewSaving}
+                  >
+                    Anwenden
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {reviewLoading && (
+              <section className="panel">
+                <div className="section-header">
+                  <div>
+                    <h2>Inbox lädt…</h2>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {!reviewLoading && currentReview && (
+              <section className="panel inbox-panel">
+                <div className="section-header">
+                  <div>
+                    <h2>{currentReview.vendor ?? 'Unbekanntes Unternehmen'}</h2>
+                    <div className="muted-text">
+                      {formatDateTime(currentReview.paperless_created)} · Confidence {Math.round(currentReview.confidence * 100)}%
+                    </div>
+                  </div>
+                  <div className="inbox-progress">{reviewCursor + 1} / {reviewItems.length}</div>
+                </div>
+                <div className="inbox-card">
+                  <div className="inbox-summary">
+                    <div className="inbox-amount">{formatCurrency(currentReview.amount)}</div>
+                    <div className="inbox-title-line">{currentReview.title ?? 'Ohne Titel'}</div>
+                    <div className="inbox-meta-list">
+                      <div className="muted-text">Doc ID {currentReview.paperless_doc_id}</div>
+                      {buildPaperlessDocumentHref(config?.paperless_base_url, currentReview.paperless_doc_id) && (
+                        <a
+                          className="secondary-button inbox-link"
+                          href={buildPaperlessDocumentHref(config?.paperless_base_url, currentReview.paperless_doc_id)}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          In Paperless öffnen
+                        </a>
+                      )}
+                    </div>
+                    {(currentReview.vendor_source === 'manual' || currentReview.amount_source === 'manual') && (
+                      <div className="inbox-lock-note">
+                        <span>🔒 Manuelle Überschreibung aktiv</span>
+                        {currentReview.vendor_source === 'manual' && <span>Unternehmen</span>}
+                        {currentReview.amount_source === 'manual' && <span>Betrag</span>}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="form-grid">
+                    <label>
+                      Unternehmen
+                      <input
+                        value={reviewForm.vendor}
+                        onChange={(event) => setReviewForm((current) => ({ ...current, vendor: event.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      Betrag
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={reviewForm.amount}
+                        onChange={(event) => setReviewForm((current) => ({ ...current, amount: event.target.value }))}
+                      />
+                    </label>
+                    <label className="full-width">
+                      OCR Kontext
+                      <textarea value={currentReview.ocr_snippet ?? currentReview.ocr_text ?? ''} readOnly />
+                    </label>
+                  </div>
+
+                  <div className="inbox-actions">
+                    <button
+                      className="primary-button"
+                      onClick={() => void handleReviewSaveAndNext()}
+                      disabled={reviewSaving}
+                    >
+                      {reviewSaving ? 'Speichert…' : 'Speichern & Weiter'}
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={() => void handleReviewResolve()}
+                      disabled={reviewSaving}
+                    >
+                      Nur als geprüft markieren
+                    </button>
+                    <button
+                      className="secondary-button"
+                      onClick={handleReviewNext}
+                      disabled={reviewSaving || reviewItems.length <= 1}
+                    >
+                      Überspringen
+                    </button>
+                  </div>
+
+                  <div className="inbox-nav">
+                    <button
+                      className="table-button"
+                      onClick={handleReviewPrev}
+                      disabled={reviewSaving || reviewCursor === 0}
+                    >
+                      Zurück (P)
+                    </button>
+                    <button
+                      className="table-button"
+                      onClick={handleReviewNext}
+                      disabled={reviewSaving || reviewCursor >= reviewItems.length - 1}
+                    >
+                      Weiter (N)
+                    </button>
+                  </div>
+                </div>
+              </section>
+            )}
+
+            {!reviewLoading && !currentReview && (
+              <section className="panel">
+                <div className="section-header">
+                  <div>
+                    <h2>Inbox leer 🎉</h2>
+                    <div className="muted-text">Alle unsicheren Rechnungen für diesen Zeitraum sind abgearbeitet.</div>
+                  </div>
+                </div>
+              </section>
+            )}
+          </section>
         )}
 
         {activePage === 'dashboard' && (

@@ -93,11 +93,27 @@ a {
   padding: 12px 14px;
   text-align: left;
   min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .nav-button.active {
   background: rgba(47, 129, 247, 0.16);
   border-color: rgba(47, 129, 247, 0.35);
+}
+
+.nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(47, 129, 247, 0.18);
+  border: 1px solid rgba(47, 129, 247, 0.34);
+  font-size: 0.84rem;
 }
 
 .sidebar-footer {
@@ -395,6 +411,11 @@ a {
   align-items: end;
 }
 
+.form-grid-inbox {
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+}
+
 .form-grid label {
   display: grid;
   gap: 8px;
@@ -514,6 +535,75 @@ thead th {
   color: rgba(255, 255, 255, 0.62);
 }
 
+.inbox-panel {
+  padding-bottom: 18px;
+}
+
+.inbox-card {
+  padding-left: 18px;
+  padding-right: 18px;
+  display: grid;
+  gap: 18px;
+}
+
+.inbox-summary {
+  display: grid;
+  gap: 10px;
+}
+
+.inbox-progress {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.95rem;
+  white-space: nowrap;
+}
+
+.inbox-amount {
+  font-size: clamp(1.7rem, 4vw, 2.4rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.inbox-title-line {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.inbox-meta-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.inbox-link {
+  display: inline-flex;
+  align-items: center;
+}
+
+.inbox-lock-note {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.9rem;
+}
+
+.inbox-actions,
+.inbox-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.inbox-actions .primary-button,
+.inbox-actions .secondary-button,
+.inbox-nav .table-button {
+  flex: 1 1 220px;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -586,7 +676,8 @@ thead th {
 
   .content-grid,
   .metrics-grid,
-  .form-grid-filters {
+  .form-grid-filters,
+  .form-grid-inbox {
     grid-template-columns: 1fr;
   }
 
@@ -614,7 +705,9 @@ thead th {
 
   .table-actions,
   .topbar-actions,
-  .actions-row {
+  .actions-row,
+  .inbox-actions,
+  .inbox-nav {
     flex-wrap: wrap;
   }
 
@@ -624,6 +717,13 @@ thead th {
 
   .range-toolbar-action {
     width: 100%;
+  }
+
+  .inbox-actions .primary-button,
+  .inbox-actions .secondary-button,
+  .inbox-nav .table-button {
+    width: 100%;
+    flex-basis: 100%;
   }
 }
 

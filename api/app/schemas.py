@@ -30,6 +30,11 @@ class InvoiceOut(BaseModel):
     model_config = {'from_attributes': True}
 
 
+class InvoiceReviewListOut(BaseModel):
+    total: int
+    items: list[InvoiceOut]
+
+
 class InvoiceUpdate(BaseModel):
     vendor: Optional[str] = None
     amount: Optional[float] = None
