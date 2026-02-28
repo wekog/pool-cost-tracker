@@ -164,6 +164,7 @@ function App() {
   const [reviewLoading, setReviewLoading] = useState(false)
   const [reviewSaving, setReviewSaving] = useState(false)
   const [reviewItems, setReviewItems] = useState<Invoice[]>([])
+  const [reviewSessionTotal, setReviewSessionTotal] = useState(0)
   const [reviewCursor, setReviewCursor] = useState(0)
   const [reviewSort, setReviewSort] = useState<ReviewSort>('amount_desc')
   const [invoiceEditor, setInvoiceEditor] = useState<Invoice | null>(null)
@@ -270,28 +271,44 @@ function App() {
   }, [sidebarOpen])
 
   useEffect(() => {
-    if (activePage !== 'inbox' || !currentReview) {
-      return
-    }
-
     function handleInboxKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null
-      const tagName = target?.tagName ?? ''
-      const isEditable = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT'
-
-      if (event.key === 'Enter' && tagName !== 'TEXTAREA') {
-        event.preventDefault()
-        void handleReviewSaveAndNext()
+      if (event.key === 'Escape') {
+        if (invoiceEditor) {
+          event.preventDefault()
+          setInvoiceEditor(null)
+          return
+        }
+        if (manualEditor) {
+          event.preventDefault()
+          setManualEditor(null)
+          return
+        }
+        if (sidebarOpen) {
+          event.preventDefault()
+          setSidebarOpen(false)
+        }
         return
       }
 
-      if (isEditable) {
+      if (activePage !== 'inbox' || !currentReview) {
+        return
+      }
+
+      const activeTagName = document.activeElement?.tagName ?? ''
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(activeTagName)) {
+        return
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        void handleReviewSaveAndNext()
         return
       }
 
       if (event.key === 'n' || event.key === 'N') {
         event.preventDefault()
         handleReviewNext()
+        return
       }
 
       if (event.key === 'p' || event.key === 'P') {
@@ -304,7 +321,7 @@ function App() {
     return () => {
       window.removeEventListener('keydown', handleInboxKeyDown)
     }
-  }, [activePage, currentReview, reviewForm, reviewItems.length])
+  }, [activePage, currentReview, invoiceEditor, manualEditor, sidebarOpen, reviewItems.length, reviewCursor, reviewForm])
 
   async function initialize() {
     try {
@@ -364,6 +381,7 @@ function App() {
         },
       })
       setReviewItems(response.data.items)
+      setReviewSessionTotal(response.data.total)
       setReviewCursor(0)
     } catch (error) {
       showNotice('error', extractApiError(error))
@@ -705,6 +723,9 @@ function App() {
       }),
     [exportBaseParams],
   )
+  const reviewProcessedCount = Math.max(reviewSessionTotal - reviewItems.length, 0)
+  const reviewPosition = currentReview ? Math.min(reviewProcessedCount + 1, reviewSessionTotal) : reviewSessionTotal
+  const reviewRemainingCount = reviewItems.length
 
   return (
     <div className="app-shell">
@@ -828,10 +849,10 @@ function App() {
               <div className="section-header">
                 <div>
                   <h2>{reviewItems.length === 0 ? 'Inbox leer 🎉' : `${reviewItems.length} Rechnungen prüfen`}</h2>
-                  <div className="muted-text">
+                  <div className="muted-text inbox-progress-meta">
                     {reviewItems.length === 0
                       ? 'Für den gewählten Zeitraum gibt es keine offenen Review-Fälle.'
-                      : `${reviewCursor + 1} von ${reviewItems.length}`}
+                      : `${reviewPosition} von ${reviewSessionTotal} · Noch ${reviewRemainingCount} offen`}
                   </div>
                 </div>
               </div>
@@ -912,7 +933,7 @@ function App() {
                       {formatDateTime(currentReview.paperless_created)} · Confidence {Math.round(currentReview.confidence * 100)}%
                     </div>
                   </div>
-                  <div className="inbox-progress">{reviewCursor + 1} / {reviewItems.length}</div>
+                  <div className="inbox-progress">{reviewPosition} / {reviewSessionTotal}</div>
                 </div>
                 <div className="inbox-card">
                   <div className="inbox-summary">
@@ -985,6 +1006,10 @@ function App() {
                     >
                       Überspringen
                     </button>
+                  </div>
+
+                  <div className="shortcut-hint">
+                    Shortcuts: Enter = Speichern & Weiter · N = Weiter · P = Zurück · Esc = Schließen
                   </div>
 
                   <div className="inbox-nav">

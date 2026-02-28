@@ -557,6 +557,12 @@ thead th {
   white-space: nowrap;
 }
 
+.inbox-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 .inbox-amount {
   font-size: clamp(1.7rem, 4vw, 2.4rem);
   font-weight: 700;
@@ -596,6 +602,11 @@ thead th {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+.shortcut-hint {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.84rem;
 }
 
 .inbox-actions .primary-button,
