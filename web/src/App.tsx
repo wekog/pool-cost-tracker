@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { format, parseISO } from 'date-fns'
 import { de } from 'date-fns/locale'
 import { api, extractApiError } from './api'
+import InvoiceCard from './components/InvoiceCard'
+import ManualCostCard from './components/ManualCostCard'
 import type {
   ConfigResponse,
   HealthResponse,
@@ -1200,7 +1202,7 @@ function App() {
                   <div className="muted-text">{invoiceLoading ? 'Lädt…' : `${invoices.length} Einträge`}</div>
                 </div>
               </div>
-              <div className="table-wrap">
+              <div className="desktop-only table-wrap">
                 <table className="data-table invoices-table">
                   <thead>
                     <tr>
@@ -1247,6 +1249,19 @@ function App() {
                     ))}
                   </tbody>
                 </table>
+                {!invoiceLoading && invoices.length === 0 && <div className="empty-state">Keine Rechnungen gefunden.</div>}
+              </div>
+              <div className="mobile-only mobile-card-list">
+                {invoices.map((invoice) => (
+                  <InvoiceCard
+                    key={invoice.id}
+                    invoice={invoice}
+                    amountLabel={formatCurrency(invoice.amount)}
+                    dateLabel={formatDateTime(invoice.paperless_created)}
+                    paperlessHref={buildPaperlessDocumentHref(config?.paperless_base_url, invoice.paperless_doc_id)}
+                    onEdit={(item) => setInvoiceEditor(item)}
+                  />
+                ))}
                 {!invoiceLoading && invoices.length === 0 && <div className="empty-state">Keine Rechnungen gefunden.</div>}
               </div>
             </section>
@@ -1324,7 +1339,7 @@ function App() {
                   <span>Archiv anzeigen</span>
                 </label>
               </div>
-              <div className="table-wrap">
+              <div className="desktop-only table-wrap">
                 <table className="data-table manual-table">
                   <thead>
                     <tr>
@@ -1364,6 +1379,22 @@ function App() {
                     ))}
                   </tbody>
                 </table>
+                {!manualLoading && manualCosts.length === 0 && <div className="empty-state">Noch keine Einträge vorhanden.</div>}
+              </div>
+              <div className="mobile-only mobile-card-list">
+                {manualCosts.map((item) => (
+                  <ManualCostCard
+                    key={item.id}
+                    item={item}
+                    amountLabel={formatCurrency(item.amount)}
+                    dateLabel={formatDateOnly(item.date)}
+                    isBusy={manualDeleting === item.id}
+                    onEdit={(entry) => setManualEditor(entry)}
+                    onArchiveToggle={(entry) => {
+                      void (entry.is_archived ? handleManualRestore(entry.id) : handleManualArchive(entry.id))
+                    }}
+                  />
+                ))}
                 {!manualLoading && manualCosts.length === 0 && <div className="empty-state">Noch keine Einträge vorhanden.</div>}
               </div>
             </section>

@@ -16,6 +16,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  overflow-x: hidden;
   background:
     radial-gradient(circle at top left, rgba(47, 129, 247, 0.12), transparent 30%),
     linear-gradient(160deg, #0f1115 0%, #121722 100%);
@@ -31,6 +32,7 @@ textarea {
 button {
   cursor: pointer;
   min-height: 44px;
+  height: 44px;
 }
 
 a {
@@ -40,6 +42,14 @@ a {
 
 #root {
   min-height: 100vh;
+}
+
+.mobile-only {
+  display: block;
+}
+
+.desktop-only {
+  display: none;
 }
 
 .app-shell {
@@ -93,6 +103,7 @@ a {
   padding: 12px 14px;
   text-align: left;
   min-height: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -190,6 +201,7 @@ a {
   display: none;
   width: 44px;
   min-width: 44px;
+  height: 44px;
   padding: 10px;
   border-radius: 12px;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -224,8 +236,12 @@ a {
 .link-button {
   border-radius: 12px;
   min-height: 44px;
+  height: 44px;
   padding: 10px 14px;
   border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .primary-button,
@@ -243,8 +259,8 @@ a {
 }
 
 .range-toolbar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: end;
 }
@@ -252,15 +268,16 @@ a {
 .range-toolbar label {
   display: grid;
   gap: 8px;
-  flex: 1 1 160px;
+  width: 100%;
   font-size: 0.92rem;
   color: rgba(255, 255, 255, 0.88);
 }
 
 .range-toolbar-action {
-  display: flex;
-  align-items: flex-end;
-  flex: 0 0 auto;
+  display: grid;
+  align-items: end;
+  justify-self: start;
+  width: 100%;
 }
 
 .range-toolbar-action .secondary-button {
@@ -305,7 +322,7 @@ a {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 16px;
 }
 
@@ -322,7 +339,7 @@ a {
 
 .content-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 18px;
 }
 
@@ -402,17 +419,17 @@ a {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 14px;
 }
 
 .form-grid-filters {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: 1fr;
   align-items: end;
 }
 
 .form-grid-inbox {
-  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  grid-template-columns: 1fr;
   align-items: end;
 }
 
@@ -428,13 +445,18 @@ a {
 }
 
 .filter-action {
-  display: flex;
+  display: grid;
   align-items: flex-end;
   height: 100%;
+  justify-self: start;
+  width: 100%;
+  grid-column: 1 / -1;
 }
 
 .filter-action .primary-button {
-  min-height: 47px;
+  min-height: 44px;
+  height: 44px;
+  width: 100%;
 }
 
 input,
@@ -447,6 +469,13 @@ textarea {
   background: rgba(17, 20, 26, 0.95);
   color: rgba(255, 255, 255, 0.92);
   padding: 12px 13px;
+}
+
+select {
+  width: 100%;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
 }
 
 textarea {
@@ -533,6 +562,117 @@ thead th {
 .empty-state {
   padding: 8px 0;
   color: rgba(255, 255, 255, 0.62);
+}
+
+.mobile-card-list {
+  display: grid;
+  gap: 14px;
+  padding: 16px 18px 18px;
+}
+
+.mobile-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(17, 20, 26, 0.96);
+}
+
+.mobile-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mobile-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.mobile-card-title span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-card-amount {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 1.06rem;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.mobile-card-text {
+  display: -webkit-box;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.82);
+  line-height: 1.45;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.mobile-card-meta,
+.mobile-card-submeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 0.88rem;
+}
+
+.mobile-card-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.mobile-card-actions .secondary-button,
+.mobile-card-actions .table-button,
+.mobile-card-actions .table-button.danger {
+  width: 100%;
+}
+
+.status-badge,
+.category-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.status-badge.review {
+  background: rgba(255, 164, 27, 0.14);
+  border-color: rgba(255, 164, 27, 0.34);
+  color: rgba(255, 213, 140, 0.96);
+}
+
+.status-badge.ok {
+  background: rgba(46, 160, 67, 0.14);
+  border-color: rgba(46, 160, 67, 0.32);
+  color: rgba(158, 234, 170, 0.96);
+}
+
+.status-badge.archived,
+.category-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .inbox-panel {
@@ -685,15 +825,61 @@ thead th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .content-grid,
-  .metrics-grid,
-  .form-grid-filters,
-  .form-grid-inbox {
-    grid-template-columns: 1fr;
-  }
-
   .section-header {
     flex-wrap: wrap;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none;
+  }
+
+  .desktop-only {
+    display: block;
+  }
+
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .range-toolbar,
+  .form-grid-filters,
+  .form-grid-inbox {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .filter-action,
+  .range-toolbar-action {
+    justify-self: end;
+    width: auto;
+  }
+
+  .filter-action .primary-button,
+  .range-toolbar-action .secondary-button {
+    width: auto;
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mobile-card-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1200px) {
+  .form-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metrics-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .content-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
