@@ -790,7 +790,7 @@ function App() {
                 Paperless {paperlessStatus}
               </div>
               <div className="status-meta">Letzter Sync: {formatLastSync(lastSync?.finished_at)}</div>
-              <button className="primary-button" onClick={() => void handleSync()} disabled={syncing}>
+              <button className="primary-button sync-button" onClick={() => void handleSync()} disabled={syncing}>
                 {syncing ? 'Synchronisiert…' : 'Sync jetzt'}
               </button>
             </div>
@@ -817,19 +817,23 @@ function App() {
                 <>
                   <label>
                     Von
-                    <input
-                      type="date"
-                      value={rangeDraft.from}
-                      onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
-                    />
+                    <div className="date-input-shell">
+                      <input
+                        type="date"
+                        value={rangeDraft.from}
+                        onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
+                      />
+                    </div>
                   </label>
                   <label>
                     Bis
-                    <input
-                      type="date"
-                      value={rangeDraft.to}
-                      onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
-                    />
+                    <div className="date-input-shell">
+                      <input
+                        type="date"
+                        value={rangeDraft.to}
+                        onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
+                      />
+                    </div>
                   </label>
                 </>
               )}
@@ -884,19 +888,23 @@ function App() {
                   <>
                     <label>
                       Von
-                      <input
-                        type="date"
-                        value={rangeDraft.from}
-                        onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
-                      />
+                      <div className="date-input-shell">
+                        <input
+                          type="date"
+                          value={rangeDraft.from}
+                          onChange={(event) => setRangeDraft((current) => ({ ...current, from: event.target.value }))}
+                        />
+                      </div>
                     </label>
                     <label>
                       Bis
-                      <input
-                        type="date"
-                        value={rangeDraft.to}
-                        onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
-                      />
+                      <div className="date-input-shell">
+                        <input
+                          type="date"
+                          value={rangeDraft.to}
+                          onChange={(event) => setRangeDraft((current) => ({ ...current, to: event.target.value }))}
+                        />
+                      </div>
                     </label>
                   </>
                 )}
@@ -1275,11 +1283,13 @@ function App() {
               <div className="form-grid">
                 <label>
                   Datum
-                  <input
-                    type="date"
-                    value={String(manualForm.date ?? '')}
-                    onChange={(event) => setManualForm((current) => ({ ...current, date: event.target.value }))}
-                  />
+                  <div className="date-input-shell">
+                    <input
+                      type="date"
+                      value={String(manualForm.date ?? '')}
+                      onChange={(event) => setManualForm((current) => ({ ...current, date: event.target.value }))}
+                    />
+                  </div>
                 </label>
                 <label>
                   Unternehmen *
@@ -1499,11 +1509,13 @@ function App() {
               <div className="form-grid">
                 <label>
                   Datum
-                  <input
-                    type="date"
-                    value={String(manualForm.date ?? '')}
-                    onChange={(event) => setManualForm((current) => ({ ...current, date: event.target.value }))}
-                  />
+                  <div className="date-input-shell">
+                    <input
+                      type="date"
+                      value={String(manualForm.date ?? '')}
+                      onChange={(event) => setManualForm((current) => ({ ...current, date: event.target.value }))}
+                    />
+                  </div>
                 </label>
                 <label>
                   Unternehmen
