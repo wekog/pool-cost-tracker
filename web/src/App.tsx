@@ -141,12 +141,12 @@ function App() {
   const [syncRuns, setSyncRuns] = useState<SyncRunResponse[]>([])
   const [syncing, setSyncing] = useState(false)
   const [rangeDraft, setRangeDraft] = useState<ActiveRange>({
-    range: 'month',
+    range: 'all',
     from: '',
     to: '',
   })
   const [activeRange, setActiveRange] = useState<ActiveRange>({
-    range: 'month',
+    range: 'all',
     from: '',
     to: '',
   })
@@ -806,10 +806,10 @@ function App() {
                     setRangeDraft((current) => ({ ...current, range: event.target.value as RangeKey }))
                   }
                 >
+                  <option value="all">Alle</option>
                   <option value="month">Aktueller Monat</option>
                   <option value="last_month">Letzter Monat</option>
                   <option value="year">Aktuelles Jahr</option>
-                  <option value="all">Alle</option>
                   <option value="custom">Benutzerdefiniert</option>
                 </select>
               </label>
@@ -873,10 +873,10 @@ function App() {
                       setRangeDraft((current) => ({ ...current, range: event.target.value as RangeKey }))
                     }
                   >
+                    <option value="all">Alle</option>
                     <option value="month">Aktueller Monat</option>
                     <option value="last_month">Letzter Monat</option>
                     <option value="year">Aktuelles Jahr</option>
-                    <option value="all">Alle</option>
                     <option value="custom">Benutzerdefiniert</option>
                   </select>
                 </label>
